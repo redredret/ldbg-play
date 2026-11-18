@@ -1,0 +1,7 @@
+# LDBG, a free falling-block RPG, played here. https://ldbg.net/ says what it is.
+# tools/export_web.ps1 copies it beside the game, the root of https://play.ldbg.net/.
+# The game's own binaries are tens of megabytes and say nothing a reader needs.
+User-agent: *
+Allow: /
+Disallow: /*.pck$
+Disallow: /*.wasm$
