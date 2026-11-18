@@ -2,6 +2,7 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8">
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-K1fbeScte1mEWv44+1tRVo/b/mdV2EHpZLMU/45aBf4=' 'sha256-/iCpl8ITmahiHMPWnImQi334xjsAcmG44G/kOohOskw=' 'sha256-M2Jo+1Vlgy5K9gpIxmzYf2VagZw+Pbz2ELGdIdR4qrM=' 'sha256-6sBawWMlNPJhGo6YX0MzzrZjikBh2rf9pdiAaXyqkYA='; style-src 'self' 'sha256-XXIxhGnoHNDsuA8o1ny1OVg6j5CsCqkCosrLmw21iXw='; img-src 'self' data: blob:; connect-src 'self' https://maincloud.spacetimedb.com wss://maincloud.spacetimedb.com https://auth.spacetimedb.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
 		<title>LDBG</title>
 		<!-- First, so its manifest downloads beside the engine: links the boot's
@@ -120,6 +121,14 @@ body {
 	animation: burst 760ms cubic-bezier(0.22, 1.5, 0.5, 1) both;
 	animation-delay: calc(520ms + var(--i) * 70ms);
 }
+
+/* Each icon's place in the burst. Classes, not style attributes: the page's
+Content-Security-Policy allows no inline style (tools/web_glue/csp.mjs). */
+.burst-0 { --i: 0; --x: 0; --y: -1; --spin: -6deg; }
+.burst-1 { --i: 1; --x: 0.951; --y: -0.309; --spin: 8deg; }
+.burst-2 { --i: 2; --x: 0.588; --y: 0.809; --spin: -8deg; }
+.burst-3 { --i: 3; --x: -0.588; --y: 0.809; --spin: 7deg; }
+.burst-4 { --i: 4; --x: -0.951; --y: -0.309; --spin: -7deg; }
 
 .burst img {
 	display: block;
@@ -427,11 +436,11 @@ window.addEventListener('keydown', function (event) {
 		<div id="status">
 			<div id="stage">
 				<div id="shockwave"></div>
-				<div class="burst" style="--i: 0; --x: 0; --y: -1; --spin: -6deg"><img src="loading/greenshore.png" alt=""></div>
-				<div class="burst" style="--i: 1; --x: 0.951; --y: -0.309; --spin: 8deg"><img src="loading/inventory.png" alt=""></div>
-				<div class="burst" style="--i: 2; --x: 0.588; --y: 0.809; --spin: -8deg"><img src="loading/crafting.png" alt=""></div>
-				<div class="burst" style="--i: 3; --x: -0.588; --y: 0.809; --spin: 7deg"><img src="loading/upgrades.png" alt=""></div>
-				<div class="burst" style="--i: 4; --x: -0.951; --y: -0.309; --spin: -7deg"><img src="loading/market.png" alt=""></div>
+				<div class="burst burst-0"><img src="loading/greenshore.png" alt=""></div>
+				<div class="burst burst-1"><img src="loading/inventory.png" alt=""></div>
+				<div class="burst burst-2"><img src="loading/crafting.png" alt=""></div>
+				<div class="burst burst-3"><img src="loading/upgrades.png" alt=""></div>
+				<div class="burst burst-4"><img src="loading/market.png" alt=""></div>
 				<img id="logo" src="loading/ldbg_wordmark.svg" alt="LDBG">
 				<div id="loader">
 					<div id="status-progress" class="indeterminate"><div id="status-progress-fill"></div></div>
@@ -443,7 +452,7 @@ window.addEventListener('keydown', function (event) {
 
 		<script src="index.js?v=6bb097973f5b"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index-362f93e0532d","mainPack":"index-d2428706fbc5.pck","experimentalVK":false,"fileSizes":{"index-38d4a8e3543a.pck":38929828,"index-362f93e0532d.wasm":26346244,"index-d2428706fbc5.pck":38929332,"patch-d1d99560dd03.pck":221040},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"ldbgPatch":"patch-d1d99560dd03.pck","ldbgFull":"index-38d4a8e3543a.pck","ldbgBase":"872835deff90761889ecc5cfada7bbcdb1f69d6d/db79f57f4f95"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index-362f93e0532d","mainPack":"index-d2428706fbc5.pck","experimentalVK":false,"fileSizes":{"index-3a15a14bcbc2.pck":38933396,"index-362f93e0532d.wasm":26346244,"index-d2428706fbc5.pck":38929332,"patch-c69b7d0cdb24.pck":276732},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"ldbgPatch":"patch-c69b7d0cdb24.pck","ldbgFull":"index-3a15a14bcbc2.pck","ldbgBase":"872835deff90761889ecc5cfada7bbcdb1f69d6d/db79f57f4f95"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 // The base and the patch (docs/BROWSER_CLIENT.md, "The base and the patch"): a
