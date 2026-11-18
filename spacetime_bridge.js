@@ -14952,6 +14952,9 @@ ${ty.variants.map(
       preparingLogin = null;
     });
   }
+  function inDesktopShell() {
+    return typeof window.ldbgClient === "object" && window.ldbgClient !== null;
+  }
   function takePreparedLogin() {
     const request = preparedLogin;
     preparedLogin = null;
@@ -15187,7 +15190,7 @@ ${ty.variants.map(
         loginPopup.focus();
         return;
       }
-      const prepared = authAvailable() ? takePreparedLogin() : null;
+      const prepared = authAvailable() && !inDesktopShell() ? takePreparedLogin() : null;
       if (prepared) {
         const currentRedirectUri2 = redirectUri();
         writePendingLogin({
