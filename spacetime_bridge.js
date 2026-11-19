@@ -882,6 +882,9 @@ ${originalIndentation}`;
     // The login's email, masked by the server (docs/PURCHASES_AND_EMAIL_PLAN.md,
     // E4): the account menu's line. The full address never comes this way.
     accountEmail: { group: "core", keys: { accountEmail: one("myAccountEmail") } },
+    // The Terms of Service in force and the version this account agreed to
+    // (docs/LEGAL_AUDIT.md L-01): the account gate's AGREE card.
+    terms: { group: "core", keys: { termsAcceptance: one("myTermsAcceptance") } },
     // The store (P1-P11): whether this account may buy, what is for sale at the
     // server's prices, what it has bought, and its checkouts in play.
     store: {
@@ -10044,6 +10047,11 @@ ${ty.variants.map(
     runId: t.string()
   };
 
+  // src/module_bindings/accept_terms_reducer.ts
+  var accept_terms_reducer_default = {
+    version: t.u32()
+  };
+
   // src/module_bindings/acknowledge_duel_notice_reducer.ts
   var acknowledge_duel_notice_reducer_default = {
     noticeId: t.string()
@@ -12360,6 +12368,7 @@ ${ty.variants.map(
   var MyTaskChests = t.object("MyTaskChests", {});
   var MyTaskState = t.object("MyTaskState", {});
   var MyTasks = t.object("MyTasks", {});
+  var MyTermsAcceptance = t.object("MyTermsAcceptance", {});
   var MyUpgradeProgress = t.object("MyUpgradeProgress", {});
   var MyUpgradeUnlocks = t.object("MyUpgradeUnlocks", {});
   var MyWatchedReplay = t.object("MyWatchedReplay", {});
@@ -13002,6 +13011,15 @@ ${ty.variants.map(
     weeklyReroll: t.u32(),
     updatedAt: t.timestamp(),
     dailyRerollsUsed: t.u32()
+  });
+  var TermsAcceptance = t.object("TermsAcceptance", {
+    owner: t.identity(),
+    version: t.u32(),
+    acceptedAt: t.timestamp()
+  });
+  var TermsStatusRow = t.object("TermsStatusRow", {
+    currentVersion: t.u32(),
+    acceptedVersion: t.u32()
   });
   var UpgradeProgress = t.object("UpgradeProgress", {
     owner: t.identity(),
@@ -14320,6 +14338,12 @@ ${ty.variants.map(
     assignedAt: t.timestamp().name("assigned_at")
   });
 
+  // src/module_bindings/my_terms_acceptance_table.ts
+  var my_terms_acceptance_table_default = t.row({
+    currentVersion: t.u32().name("current_version"),
+    acceptedVersion: t.u32().name("accepted_version")
+  });
+
   // src/module_bindings/my_upgrade_progress_table.ts
   var my_upgrade_progress_table_default = t.row({
     owner: t.identity().primaryKey(),
@@ -15054,6 +15078,11 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_tasks_table_default),
+    myTermsAcceptance: table({
+      name: "my_terms_acceptance",
+      indexes: [],
+      constraints: []
+    }, my_terms_acceptance_table_default),
     myUpgradeProgress: table({
       name: "my_upgrade_progress",
       indexes: [],
@@ -15127,6 +15156,7 @@ ${ty.variants.map(
   });
   var reducersSchema = reducers(
     reducerSchema("abandon_run", abandon_run_reducer_default),
+    reducerSchema("accept_terms", accept_terms_reducer_default),
     reducerSchema("acknowledge_duel_notice", acknowledge_duel_notice_reducer_default),
     reducerSchema("acknowledge_market_sales", acknowledge_market_sales_reducer_default),
     reducerSchema("acknowledge_task_chest", acknowledge_task_chest_reducer_default),
@@ -15426,6 +15456,7 @@ ${ty.variants.map(
     "my_task_chests": "myTaskChests",
     "my_task_state": "myTaskState",
     "my_tasks": "myTasks",
+    "my_terms_acceptance": "myTermsAcceptance",
     "my_upgrade_progress": "myUpgradeProgress",
     "my_upgrade_unlocks": "myUpgradeUnlocks",
     "my_watched_replay": "myWatchedReplay",
