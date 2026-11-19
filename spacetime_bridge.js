@@ -1878,9 +1878,9 @@ ${originalIndentation}`;
     const str = s.replace(/[-_]+/g, "_").replace(/_([a-zA-Z0-9])/g, (_, c) => c.toUpperCase());
     return str.charAt(0).toLowerCase() + str.slice(1);
   }
-  function coerceParams(params4) {
+  function coerceParams(params5) {
     return Object.fromEntries(
-      Object.entries(params4).map(([n, c]) => [
+      Object.entries(params5).map(([n, c]) => [
         n,
         "typeBuilder" in c ? c.typeBuilder : c
       ])
@@ -7886,16 +7886,16 @@ ${ty.variants.map(
         const encodedReducerName = this.#reducerNameBytes[reducerName];
         const [target, key] = accessorSlot(out, reducer.accessorName);
         const { serialize: serializeArgs } = this.#reducerArgsSerializers[reducerName];
-        target[key] = (params4) => {
+        target[key] = (params5) => {
           const writer = this.#reducerArgsEncoder;
           writer.clear();
-          serializeArgs(writer, params4);
+          serializeArgs(writer, params5);
           const argsBuffer = writer.getBuffer();
           return this.#callReducerWithEncodedName(
             reducerName,
             encodedReducerName,
             argsBuffer,
-            params4
+            params5
           );
         };
       }
@@ -7909,9 +7909,9 @@ ${ty.variants.map(
         const encodedProcedureName = this.#procedureNameBytes[procedureName];
         const [target, key] = accessorSlot(out, procedure.accessorName);
         const { serializeArgs, deserializeReturn } = this.#procedureSerializers[procedureName];
-        target[key] = (params4) => {
+        target[key] = (params5) => {
           writer.clear();
-          serializeArgs(writer, params4);
+          serializeArgs(writer, params5);
           const argsBuffer = writer.getBuffer();
           return this.#callProcedureWithEncodedName(
             procedureName,
@@ -8726,12 +8726,12 @@ ${ty.variants.map(
      * @param callReducerFlags The flags for the reducer call
      * @param params The arguments to pass to the reducer
      */
-    callReducerWithParams(reducerName, _paramsType, params4) {
+    callReducerWithParams(reducerName, _paramsType, params5) {
       const writer = this.#reducerArgsEncoder;
       writer.clear();
-      this.#reducerArgsSerializers[reducerName].serialize(writer, params4);
+      this.#reducerArgsSerializers[reducerName].serialize(writer, params5);
       const argsBuffer = writer.getBuffer();
-      return this.callReducer(reducerName, argsBuffer, params4);
+      return this.callReducer(reducerName, argsBuffer, params5);
     }
     /**
      * Call a reducer on your SpacetimeDB module.
@@ -8801,10 +8801,10 @@ ${ty.variants.map(
      * @param callReducerFlags The flags for the reducer call
      * @param params The arguments to pass to the reducer
      */
-    callProcedureWithParams(procedureName, _paramsType, params4, _returnType) {
+    callProcedureWithParams(procedureName, _paramsType, params5, _returnType) {
       const writer = new BinaryWriter(1024);
       const { serializeArgs, deserializeReturn } = this.#procedureSerializers[procedureName];
-      serializeArgs(writer, params4);
+      serializeArgs(writer, params5);
       const argsBuffer = writer.getBuffer();
       return this.callProcedure(procedureName, argsBuffer).then((returnBuf) => {
         return deserializeReturn(new BinaryReader(returnBuf));
@@ -10010,9 +10010,9 @@ ${ty.variants.map(
     const handles = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
     return new Reducers(handles);
   }
-  function reducerSchema(name, params4, accessorName) {
+  function reducerSchema(name, params5, accessorName) {
     const paramType = {
-      elements: Object.entries(params4).map(([n, c]) => ({
+      elements: Object.entries(params5).map(([n, c]) => ({
         name: n,
         algebraicType: "typeBuilder" in c ? c.typeBuilder.algebraicType : c.algebraicType
       }))
@@ -10020,7 +10020,7 @@ ${ty.variants.map(
     return {
       reducerName: name,
       accessorName: accessorName ?? toCamelCase(name),
-      params: new RowBuilder(params4),
+      params: new RowBuilder(params5),
       paramsSpacetimeType: paramType,
       reducerDef: {
         name,
@@ -10033,12 +10033,12 @@ ${ty.variants.map(
     const procedures22 = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
     return { procedures: procedures22 };
   }
-  function procedureSchema(name, params4, returnType4, accessorName) {
+  function procedureSchema(name, params5, returnType5, accessorName) {
     return {
       name,
       accessorName: accessorName ?? toCamelCase(name),
-      params: coerceParams(params4),
-      returnType: returnType4
+      params: coerceParams(params5),
+      returnType: returnType5
     };
   }
 
@@ -11394,7 +11394,8 @@ ${ty.variants.map(
     checkoutUrl: t.string(),
     totalCents: t.u32(),
     createdAt: t.timestamp(),
-    updatedAt: t.timestamp()
+    updatedAt: t.timestamp(),
+    quantity: t.u32()
   });
   var ClientProblemReport = t.object("ClientProblemReport", {
     id: t.u64(),
@@ -12768,7 +12769,8 @@ ${ty.variants.map(
     granted: t.bool(),
     paidAt: t.timestamp(),
     changedAt: t.timestamp(),
-    erased: t.bool()
+    erased: t.bool(),
+    quantity: t.u32()
   });
   var PurchaseHold = t.object("PurchaseHold", {
     owner: t.identity(),
@@ -12973,7 +12975,9 @@ ${ty.variants.map(
     name: t.string(),
     priceCents: t.u32(),
     currency: t.string(),
-    onSale: t.bool()
+    onSale: t.bool(),
+    category: t.string(),
+    maxQuantity: t.u32()
   });
   var StoreOffers = t.object("StoreOffers", {});
   var StoreReconcile = t.object("StoreReconcile", {
@@ -13055,6 +13059,14 @@ ${ty.variants.map(
     returnTo: t.string()
   };
   var returnType3 = CheckoutAnswer;
+
+  // src/module_bindings/start_checkout_v_2_procedure.ts
+  var params4 = {
+    productId: t.string(),
+    quantity: t.u32(),
+    returnTo: t.string()
+  };
+  var returnType4 = CheckoutAnswer;
 
   // src/module_bindings/bounty_shop_table.ts
   var bounty_shop_table_default = t.row({
@@ -13313,7 +13325,8 @@ ${ty.variants.map(
     checkoutUrl: t.string().name("checkout_url"),
     totalCents: t.u32().name("total_cents"),
     createdAt: t.timestamp().name("created_at"),
-    updatedAt: t.timestamp().name("updated_at")
+    updatedAt: t.timestamp().name("updated_at"),
+    quantity: t.u32()
   });
 
   // src/module_bindings/my_collection_kills_table.ts
@@ -14147,7 +14160,8 @@ ${ty.variants.map(
     granted: t.bool(),
     paidAt: t.timestamp().name("paid_at"),
     changedAt: t.timestamp().name("changed_at"),
-    erased: t.bool()
+    erased: t.bool(),
+    quantity: t.u32()
   });
 
   // src/module_bindings/my_quest_claims_table.ts
@@ -14523,7 +14537,9 @@ ${ty.variants.map(
     name: t.string(),
     priceCents: t.u32().name("price_cents"),
     currency: t.string(),
-    onSale: t.bool().name("on_sale")
+    onSale: t.bool().name("on_sale"),
+    category: t.string(),
+    maxQuantity: t.u32().name("max_quantity")
   });
 
   // src/module_bindings/index.ts
@@ -15345,7 +15361,8 @@ ${ty.variants.map(
   var proceduresSchema = procedures(
     procedureSchema("operator_account_email", params, returnType),
     procedureSchema("operator_store_reconcile", params2, returnType2),
-    procedureSchema("start_checkout", params3, returnType3)
+    procedureSchema("start_checkout", params3, returnType3),
+    procedureSchema("start_checkout_v_2", params4, returnType4)
   );
   var REMOTE_MODULE = {
     versionInfo: {
@@ -19428,9 +19445,17 @@ ${ty.variants.map(
       emit({ type: "checkout", state: "closed", intentId });
     }, 500);
   }
-  function beginCheckout(productId) {
+  function checkoutQuantity(value) {
+    const quantity = Number(value ?? 1);
+    return Number.isInteger(quantity) && quantity >= 1 ? quantity : 1;
+  }
+  function beginCheckout(productId, quantity = 1) {
     const connection = live.connection;
-    if (!connection || !live.coreSubscriptionReady || typeof connection.procedures?.startCheckout !== "function") {
+    const count = checkoutQuantity(quantity);
+    const procedures3 = connection?.procedures;
+    const several = typeof procedures3?.startCheckoutV2 === "function";
+    const one2 = typeof procedures3?.startCheckout === "function";
+    if (!connection || !live.coreSubscriptionReady || !(several || one2 && count === 1)) {
       emit({ type: "checkout", state: "refused", message: "You're not connected." });
       return false;
     }
@@ -19446,8 +19471,9 @@ ${ty.variants.map(
       } catch {
       }
     }
-    emit({ type: "checkout", state: "opening", productId });
-    Promise.resolve(connection.procedures.startCheckout({ productId, returnTo: returnPageFor(window.location.origin) })).then((answer) => {
+    emit({ type: "checkout", state: "opening", productId, quantity: count });
+    const returnTo = returnPageFor(window.location.origin);
+    Promise.resolve(several ? procedures3.startCheckoutV2({ productId, quantity: count, returnTo }) : procedures3.startCheckout({ productId, returnTo })).then((answer) => {
       const error = String(answer?.error ?? "");
       const url = answer?.url;
       if (error !== "" || !isCheckoutUrl(url)) {
