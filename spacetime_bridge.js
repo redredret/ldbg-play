@@ -15384,7 +15384,9 @@ ${ty.variants.map(
     [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [token]"],
     [/\b((?:access|id|refresh)_token|code|state|nonce|code_verifier|client_secret)=([^&\s"']+)/gi, "$1=[redacted]"],
     [/"((?:access|id|refresh)Token|(?:access|id|refresh)_token|token|password)"\s*:\s*"[^"]*"/gi, '"$1":"[redacted]"'],
-    [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]"]
+    [/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "[email]"],
+    [/([A-Za-z]:[\\/]+(?:Users|Documents and Settings)[\\/]+)[^\\/"'<>|:*?\r\n]+/gi, "$1[user]"],
+    [/(\/(?:home|Users)\/)[^/\s"':]+/gi, "$1[user]"]
   ];
   function scrub(text) {
     let out = String(text ?? "");
