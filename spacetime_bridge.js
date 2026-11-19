@@ -844,6 +844,26 @@ ${originalIndentation}`;
     }
     return "SpacetimeAuth account";
   }
+  var SHELL_KEEPS_SIGN_IN_POPUP_FROM = "0.3.1";
+  function mayOpenSignInDirectly(clientSettingsJson) {
+    if (clientSettingsJson === null) return true;
+    let version = "";
+    try {
+      const parsed = JSON.parse(clientSettingsJson);
+      version = typeof parsed?.clientVersion === "string" ? parsed.clientVersion : "";
+    } catch {
+      return false;
+    }
+    const parts = (text) => /^\d+(\.\d+)*$/.test(text) ? text.split(".").map(Number) : null;
+    const have = parts(version);
+    const need = parts(SHELL_KEEPS_SIGN_IN_POPUP_FROM);
+    if (!have) return false;
+    for (let index = 0; index < need.length; index++) {
+      const part = have[index] ?? 0;
+      if (part !== need[index]) return part > need[index];
+    }
+    return true;
+  }
 
   // src/snapshot_domains.ts
   function one(view) {
@@ -14952,8 +14972,14 @@ ${ty.variants.map(
       preparingLogin = null;
     });
   }
-  function inDesktopShell() {
-    return typeof window.ldbgClient === "object" && window.ldbgClient !== null;
+  function desktopClientSettings() {
+    const client = window.ldbgClient;
+    if (typeof client !== "object" || client === null) return null;
+    try {
+      return String(client.getSettings());
+    } catch {
+      return "";
+    }
   }
   function takePreparedLogin() {
     const request = preparedLogin;
@@ -15190,7 +15216,7 @@ ${ty.variants.map(
         loginPopup.focus();
         return;
       }
-      const prepared = authAvailable() && !inDesktopShell() ? takePreparedLogin() : null;
+      const prepared = authAvailable() && mayOpenSignInDirectly(desktopClientSettings()) ? takePreparedLogin() : null;
       if (prepared) {
         const currentRedirectUri2 = redirectUri();
         writePendingLogin({
