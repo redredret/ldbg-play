@@ -837,12 +837,12 @@ ${originalIndentation}`;
     return Math.max(TOKEN_REFRESH_MIN_DELAY_MS, due);
   }
   function accountLabel(claims) {
-    if (!claims) return "SpacetimeAuth account";
-    for (const key of ["preferred_username", "name", "email"]) {
+    if (!claims) return "Signed in";
+    for (const key of ["preferred_username", "name"]) {
       const value = claims[key];
-      if (typeof value === "string" && value.trim()) return value.trim();
+      if (typeof value === "string" && value.trim() && !value.includes("@")) return value.trim();
     }
-    return "SpacetimeAuth account";
+    return "Signed in";
   }
   var SHELL_KEEPS_SIGN_IN_POPUP_FROM = "0.3.1";
   function mayOpenSignInDirectly(clientSettingsJson) {
@@ -879,6 +879,20 @@ ${originalIndentation}`;
     // 'profile': the game reads it once per sign-in, and each save's echo would
     // otherwise re-apply the whole profile and redraw every screen that shows it.
     accountSettings: { group: "core", keys: { accountSettings: one("myAccountSettings") } },
+    // The login's email, masked by the server (docs/PURCHASES_AND_EMAIL_PLAN.md,
+    // E4): the account menu's line. The full address never comes this way.
+    accountEmail: { group: "core", keys: { accountEmail: one("myAccountEmail") } },
+    // The store (P1-P11): whether this account may buy, what is for sale at the
+    // server's prices, what it has bought, and its checkouts in play.
+    store: {
+      group: "core",
+      keys: {
+        storeStatus: one("myStoreStatus"),
+        storeOffers: many("storeOffers"),
+        purchases: many("myPurchases"),
+        checkouts: many("myCheckouts")
+      }
+    },
     // The course planned on the Endless Dungeon's world map (rules version 94):
     // one tiny row, written when the player saves a course.
     endlessCourse: { group: "core", keys: { endlessCourse: one("myEndlessCourse") } },
@@ -1860,6 +1874,14 @@ ${originalIndentation}`;
   function toCamelCase(s) {
     const str = s.replace(/[-_]+/g, "_").replace(/_([a-zA-Z0-9])/g, (_, c) => c.toUpperCase());
     return str.charAt(0).toLowerCase() + str.slice(1);
+  }
+  function coerceParams(params4) {
+    return Object.fromEntries(
+      Object.entries(params4).map(([n, c]) => [
+        n,
+        "typeBuilder" in c ? c.typeBuilder : c
+      ])
+    );
   }
   var hasOwn = Object.hasOwn;
   var TimeDuration = class _TimeDuration {
@@ -7861,16 +7883,16 @@ ${ty.variants.map(
         const encodedReducerName = this.#reducerNameBytes[reducerName];
         const [target, key] = accessorSlot(out, reducer.accessorName);
         const { serialize: serializeArgs } = this.#reducerArgsSerializers[reducerName];
-        target[key] = (params) => {
+        target[key] = (params4) => {
           const writer = this.#reducerArgsEncoder;
           writer.clear();
-          serializeArgs(writer, params);
+          serializeArgs(writer, params4);
           const argsBuffer = writer.getBuffer();
           return this.#callReducerWithEncodedName(
             reducerName,
             encodedReducerName,
             argsBuffer,
-            params
+            params4
           );
         };
       }
@@ -7884,9 +7906,9 @@ ${ty.variants.map(
         const encodedProcedureName = this.#procedureNameBytes[procedureName];
         const [target, key] = accessorSlot(out, procedure.accessorName);
         const { serializeArgs, deserializeReturn } = this.#procedureSerializers[procedureName];
-        target[key] = (params) => {
+        target[key] = (params4) => {
           writer.clear();
-          serializeArgs(writer, params);
+          serializeArgs(writer, params4);
           const argsBuffer = writer.getBuffer();
           return this.#callProcedureWithEncodedName(
             procedureName,
@@ -8701,12 +8723,12 @@ ${ty.variants.map(
      * @param callReducerFlags The flags for the reducer call
      * @param params The arguments to pass to the reducer
      */
-    callReducerWithParams(reducerName, _paramsType, params) {
+    callReducerWithParams(reducerName, _paramsType, params4) {
       const writer = this.#reducerArgsEncoder;
       writer.clear();
-      this.#reducerArgsSerializers[reducerName].serialize(writer, params);
+      this.#reducerArgsSerializers[reducerName].serialize(writer, params4);
       const argsBuffer = writer.getBuffer();
-      return this.callReducer(reducerName, argsBuffer, params);
+      return this.callReducer(reducerName, argsBuffer, params4);
     }
     /**
      * Call a reducer on your SpacetimeDB module.
@@ -8776,10 +8798,10 @@ ${ty.variants.map(
      * @param callReducerFlags The flags for the reducer call
      * @param params The arguments to pass to the reducer
      */
-    callProcedureWithParams(procedureName, _paramsType, params, _returnType) {
+    callProcedureWithParams(procedureName, _paramsType, params4, _returnType) {
       const writer = new BinaryWriter(1024);
       const { serializeArgs, deserializeReturn } = this.#procedureSerializers[procedureName];
-      serializeArgs(writer, params);
+      serializeArgs(writer, params4);
       const argsBuffer = writer.getBuffer();
       return this.callProcedure(procedureName, argsBuffer).then((returnBuf) => {
         return deserializeReturn(new BinaryReader(returnBuf));
@@ -9985,9 +10007,9 @@ ${ty.variants.map(
     const handles = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
     return new Reducers(handles);
   }
-  function reducerSchema(name, params, accessorName) {
+  function reducerSchema(name, params4, accessorName) {
     const paramType = {
-      elements: Object.entries(params).map(([n, c]) => ({
+      elements: Object.entries(params4).map(([n, c]) => ({
         name: n,
         algebraicType: "typeBuilder" in c ? c.typeBuilder.algebraicType : c.algebraicType
       }))
@@ -9995,7 +10017,7 @@ ${ty.variants.map(
     return {
       reducerName: name,
       accessorName: accessorName ?? toCamelCase(name),
-      params: new RowBuilder(params),
+      params: new RowBuilder(params4),
       paramsSpacetimeType: paramType,
       reducerDef: {
         name,
@@ -10007,6 +10029,14 @@ ${ty.variants.map(
   function procedures(...args) {
     const procedures22 = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
     return { procedures: procedures22 };
+  }
+  function procedureSchema(name, params4, returnType4, accessorName) {
+    return {
+      name,
+      accessorName: accessorName ?? toCamelCase(name),
+      params: coerceParams(params4),
+      returnType: returnType4
+    };
   }
 
   // src/module_bindings/abandon_run_reducer.ts
@@ -10073,6 +10103,11 @@ ${ty.variants.map(
     shopId: t.string(),
     itemId: t.string(),
     quantity: t.u32()
+  };
+
+  // src/module_bindings/cancel_checkout_reducer.ts
+  var cancel_checkout_reducer_default = {
+    intentId: t.string()
   };
 
   // src/module_bindings/cancel_friend_request_reducer.ts
@@ -10437,6 +10472,12 @@ ${ty.variants.map(
     reason: t.string()
   };
 
+  // src/module_bindings/operator_lift_purchase_hold_reducer.ts
+  var operator_lift_purchase_hold_reducer_default = {
+    displayName: t.string(),
+    reason: t.string()
+  };
+
   // src/module_bindings/operator_lift_suspension_reducer.ts
   var operator_lift_suspension_reducer_default = {
     displayName: t.string(),
@@ -10475,6 +10516,17 @@ ${ty.variants.map(
   // src/module_bindings/operator_set_loot_key_reducer.ts
   var operator_set_loot_key_reducer_default = {
     key: t.string()
+  };
+
+  // src/module_bindings/operator_store_set_mode_reducer.ts
+  var operator_store_set_mode_reducer_default = {
+    mode: t.string()
+  };
+
+  // src/module_bindings/operator_store_tester_reducer.ts
+  var operator_store_tester_reducer_default = {
+    displayName: t.string(),
+    allowed: t.bool()
   };
 
   // src/module_bindings/operator_suspend_account_reducer.ts
@@ -11077,6 +11129,1915 @@ ${ty.variants.map(
     reason: t.string()
   };
 
+  // src/module_bindings/operator_account_email_procedure.ts
+  var params = {
+    displayName: t.string(),
+    reason: t.string()
+  };
+  var returnType = t.string();
+
+  // src/module_bindings/operator_store_reconcile_procedure.ts
+  var params2 = {};
+  var returnType2 = t.string();
+
+  // src/module_bindings/types.ts
+  var AccountEmail = t.object("AccountEmail", {
+    owner: t.identity(),
+    email: t.string(),
+    emailVerified: t.bool(),
+    updatedAt: t.timestamp(),
+    seenAt: t.timestamp()
+  });
+  var AccountEmailRow = t.object("AccountEmailRow", {
+    masked: t.string(),
+    verified: t.bool()
+  });
+  var AccountOnboarding = t.object("AccountOnboarding", {
+    owner: t.identity(),
+    tutorialStage: t.u32(),
+    createdAt: t.timestamp(),
+    updatedAt: t.timestamp()
+  });
+  var AccountSession = t.object("AccountSession", {
+    owner: t.identity(),
+    connection: t.string(),
+    renewedAt: t.timestamp()
+  });
+  var AccountSettings = t.object("AccountSettings", {
+    owner: t.identity(),
+    payload: t.string(),
+    updatedAt: t.timestamp()
+  });
+  var AccountSuspension = t.object("AccountSuspension", {
+    owner: t.identity(),
+    reason: t.string(),
+    until: t.u64(),
+    suspendedBy: t.identity(),
+    suspendedAt: t.timestamp()
+  });
+  var ActiveRun = t.object("ActiveRun", {
+    owner: t.identity(),
+    runId: t.string(),
+    dungeonId: t.string(),
+    seed: t.u32(),
+    currentFloor: t.u32(),
+    score: t.u32(),
+    linesCleared: t.u32(),
+    startedAt: t.timestamp(),
+    rivalPressure: t.bool(),
+    pvpBagSeed: t.u32(),
+    darkMatchId: t.string(),
+    darkRound: t.u32(),
+    combatStatsJson: t.string(),
+    combatWeaponType: t.string(),
+    combatSkillsJson: t.string(),
+    dungeonStoryVersion: t.u32(),
+    duelWinsAt: t.string(),
+    combatWeaponId: t.string(),
+    foodItemId: t.string(),
+    foodQuantity: t.u32(),
+    necklaceItemId: t.string(),
+    partyId: t.string()
+  });
+  var ActiveRunView = t.object("ActiveRunView", {
+    owner: t.identity(),
+    runId: t.string(),
+    dungeonId: t.string(),
+    seed: t.u32(),
+    currentFloor: t.u32(),
+    score: t.u32(),
+    linesCleared: t.u32(),
+    startedAt: t.timestamp(),
+    rivalPressure: t.bool(),
+    pvpBagSeed: t.u32(),
+    darkMatchId: t.string(),
+    darkRound: t.u32(),
+    combatStatsJson: t.string(),
+    combatWeaponType: t.string(),
+    combatSkillsJson: t.string(),
+    dungeonStoryVersion: t.u32(),
+    combatWeaponId: t.string(),
+    foodItemId: t.string(),
+    foodQuantity: t.u32(),
+    necklaceItemId: t.string(),
+    partyId: t.string()
+  });
+  var BackendSweep = t.object("BackendSweep", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt()
+  });
+  var BadgeLookup = t.object("BadgeLookup", {
+    owner: t.identity(),
+    source: t.string(),
+    sourceId: t.string(),
+    badgeIds: t.string(),
+    shown: t.string(),
+    at: t.timestamp()
+  });
+  var BadgeLookupSubject = t.object("BadgeLookupSubject", {
+    owner: t.identity(),
+    subject: t.identity()
+  });
+  var BadgeUnlock = t.object("BadgeUnlock", {
+    id: t.u64(),
+    owner: t.identity(),
+    badgeId: t.string(),
+    earnedAt: t.timestamp(),
+    shown: t.bool()
+  });
+  var BoardPublishBucket = t.object("BoardPublishBucket", {
+    owner: t.identity(),
+    milliTokens: t.u32(),
+    refilledAt: t.timestamp(),
+    dropped: t.u32()
+  });
+  var BountyHeld = t.object("BountyHeld", {
+    owner: t.identity(),
+    targetId: t.string(),
+    count: t.u32(),
+    progress: t.u32(),
+    twist: t.string(),
+    detailJson: t.string(),
+    bankedXp: t.u64(),
+    takenAt: t.timestamp()
+  });
+  var BountyPickTally = t.object("BountyPickTally", {
+    key: t.string(),
+    offered: t.u64(),
+    picked: t.u64()
+  });
+  var BountyShop = t.object("BountyShop", {});
+  var BountyShopRow = t.object("BountyShopRow", {
+    kind: t.string(),
+    id: t.string(),
+    name: t.string(),
+    description: t.string(),
+    cost: t.u32(),
+    rank: t.u32(),
+    maxLevel: t.u32(),
+    requires: t.string(),
+    itemId: t.string()
+  });
+  var BountyState = t.object("BountyState", {
+    owner: t.identity(),
+    marks: t.u64(),
+    finished: t.u32(),
+    streak: t.u32(),
+    paidDrops: t.u32(),
+    boardCounter: t.u32(),
+    offersJson: t.string(),
+    rerollDay: t.u32(),
+    rerollsUsed: t.u32(),
+    unlocksJson: t.string(),
+    blocksJson: t.string(),
+    twistsOn: t.bool(),
+    lastRunJson: t.string(),
+    updatedAt: t.timestamp()
+  });
+  var BrokenGear = t.object("BrokenGear", {
+    instanceId: t.u64(),
+    brokenAt: t.timestamp()
+  });
+  var ChatAuthor = t.object("ChatAuthor", {
+    lineId: t.u64(),
+    author: t.identity()
+  });
+  var ChatBlock = t.object("ChatBlock", {
+    id: t.u64(),
+    owner: t.identity(),
+    blocked: t.identity(),
+    blockedName: t.string(),
+    at: t.timestamp()
+  });
+  var ChatBlockRow = t.object("ChatBlockRow", {
+    blockId: t.u64(),
+    name: t.string(),
+    at: t.timestamp()
+  });
+  var ChatConfig = t.object("ChatConfig", {
+    id: t.u32(),
+    mode: t.string(),
+    updatedAt: t.timestamp()
+  });
+  var ChatLine = t.object("ChatLine", {
+    id: t.u64(),
+    channel: t.string(),
+    authorName: t.string(),
+    authorLevel: t.u32(),
+    text: t.string(),
+    sentAt: t.timestamp(),
+    authorColor: t.u32(),
+    authorBadge: t.string(),
+    authorRestricted: t.bool()
+  });
+  var ChatMute = t.object("ChatMute", {
+    owner: t.identity(),
+    untilMicros: t.u64(),
+    reason: t.string(),
+    at: t.timestamp()
+  });
+  var ChatRate = t.object("ChatRate", {
+    owner: t.identity(),
+    windowStartMicros: t.u64(),
+    countInWindow: t.u32(),
+    lastSentMicros: t.u64(),
+    lastText: t.string()
+  });
+  var ChatReport = t.object("ChatReport", {
+    id: t.u64(),
+    reporter: t.identity(),
+    author: t.identity(),
+    lineId: t.u64(),
+    channel: t.string(),
+    spokenAs: t.string(),
+    text: t.string(),
+    context: t.string(),
+    reason: t.string(),
+    at: t.timestamp()
+  });
+  var ChatStatusRow = t.object("ChatStatusRow", {
+    open: t.bool(),
+    mutedUntilMicros: t.u64(),
+    muteReason: t.string(),
+    room: t.string(),
+    channel: t.string(),
+    presetsOnly: t.bool(),
+    globalMinLevel: t.u32()
+  });
+  var ChatTester = t.object("ChatTester", {
+    owner: t.identity(),
+    addedAt: t.timestamp()
+  });
+  var CheckoutAnswer = t.object("CheckoutAnswer", {
+    error: t.string(),
+    intentId: t.string(),
+    url: t.string(),
+    totalCents: t.u32(),
+    currency: t.string()
+  });
+  var CheckoutIntent = t.object("CheckoutIntent", {
+    intentId: t.string(),
+    owner: t.identity(),
+    productId: t.string(),
+    priceCents: t.u32(),
+    currency: t.string(),
+    state: t.string(),
+    basketIdent: t.string(),
+    checkoutUrl: t.string(),
+    totalCents: t.u32(),
+    createdAt: t.timestamp(),
+    updatedAt: t.timestamp()
+  });
+  var ClientProblemReport = t.object("ClientProblemReport", {
+    id: t.u64(),
+    owner: t.identity(),
+    at: t.timestamp(),
+    lastAt: t.timestamp(),
+    count: t.u32(),
+    kind: t.string(),
+    signature: t.string(),
+    build: t.string(),
+    payload: t.string()
+  });
+  var CollectionKills = t.object("CollectionKills", {
+    id: t.u64(),
+    owner: t.identity(),
+    sourceId: t.string(),
+    kills: t.u64()
+  });
+  var CollectionLog = t.object("CollectionLog", {
+    id: t.u64(),
+    owner: t.identity(),
+    itemId: t.string(),
+    firstSourceId: t.string(),
+    firstAt: t.timestamp(),
+    firstKillCount: t.u64(),
+    obtained: t.u64()
+  });
+  var CombatTreeState = t.object("CombatTreeState", {
+    owner: t.identity(),
+    treeVersion: t.u32(),
+    respecAt: t.timestamp()
+  });
+  var CompactOpponentBoardV4 = t.object("CompactOpponentBoardV4", {
+    owner: t.identity(),
+    slot: t.u32(),
+    alive: t.bool(),
+    placement: t.u32(),
+    ready: t.bool(),
+    displayName: t.string(),
+    cells: t.string(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32(),
+    score: t.u32(),
+    linesCleared: t.u32(),
+    toppedOut: t.bool()
+  });
+  var CompactOpponentPiece = t.object("CompactOpponentPiece", {
+    owner: t.identity(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32()
+  });
+  var ContentVersion = t.object("ContentVersion", {});
+  var ContentVersionRow = t.object("ContentVersionRow", {
+    hash: t.string()
+  });
+  var DarkCheckpoint = t.object("DarkCheckpoint", {
+    owner: t.identity(),
+    runId: t.string(),
+    encounter: t.u32(),
+    reachedAt: t.timestamp(),
+    leaving: t.bool()
+  });
+  var DarkChestClaim = t.object("DarkChestClaim", {
+    id: t.u64(),
+    owner: t.identity(),
+    runId: t.string(),
+    chestIndex: t.u32(),
+    source: t.string(),
+    rowsJson: t.string(),
+    claimedAt: t.timestamp()
+  });
+  var DarkChestPool = t.object("DarkChestPool", {
+    id: t.u64(),
+    itemId: t.string(),
+    lostAt: t.timestamp(),
+    instanceId: t.u64()
+  });
+  var DarkDeathLoss = t.object("DarkDeathLoss", {
+    owner: t.identity(),
+    runId: t.string(),
+    lostItemId: t.string(),
+    lostInstanceId: t.u64(),
+    lostFate: t.string(),
+    brokenJson: t.string(),
+    settledAt: t.timestamp()
+  });
+  var DarkDuel = t.object("DarkDuel", {
+    duelId: t.string(),
+    playerOne: t.identity(),
+    playerTwo: t.identity(),
+    oneName: t.string(),
+    twoName: t.string(),
+    oneLevel: t.u32(),
+    twoLevel: t.u32(),
+    oneAtEncounter: t.u32(),
+    twoAtEncounter: t.u32(),
+    oneHealth: t.u32(),
+    twoHealth: t.u32(),
+    oneEntered: t.bool(),
+    twoEntered: t.bool(),
+    oneDamageSent: t.u32(),
+    twoDamageSent: t.u32(),
+    state: t.string(),
+    winner: t.identity(),
+    winnerName: t.string(),
+    outcome: t.string(),
+    matchedAt: t.timestamp(),
+    startedAt: t.timestamp(),
+    decidedAt: t.timestamp(),
+    oneRunSeed: t.u32(),
+    twoRunSeed: t.u32(),
+    oneLook: t.string(),
+    twoLook: t.string(),
+    friendly: t.bool(),
+    ground: t.string(),
+    oneRunId: t.string(),
+    twoRunId: t.string(),
+    oneBlows: t.u32(),
+    twoBlows: t.u32(),
+    oneBoardBreaks: t.u32(),
+    twoBoardBreaks: t.u32(),
+    oneEntryHealth: t.u32(),
+    twoEntryHealth: t.u32(),
+    onePotions: t.u32(),
+    twoPotions: t.u32(),
+    oneEntryPotions: t.u32(),
+    twoEntryPotions: t.u32(),
+    oneNecklace: t.u32(),
+    twoNecklace: t.u32(),
+    oneEntryNecklace: t.u32(),
+    twoEntryNecklace: t.u32(),
+    oneShielded: t.bool(),
+    twoShielded: t.bool(),
+    oneBoardBreakCells: t.u32(),
+    twoBoardBreakCells: t.u32()
+  });
+  var DarkDuelBlow = t.object("DarkDuelBlow", {
+    blowId: t.string(),
+    duelId: t.string(),
+    sender: t.identity(),
+    recipient: t.identity(),
+    damage: t.u32(),
+    remainingHealth: t.u32(),
+    lines: t.u32(),
+    spinType: t.string(),
+    combo: t.u32(),
+    backToBack: t.bool(),
+    perfectClear: t.bool(),
+    ordinal: t.u32(),
+    createdAt: t.timestamp(),
+    effectBehavior: t.string(),
+    effectCells: t.u32(),
+    effectSeed: t.u32(),
+    effects: t.string()
+  });
+  var DarkDuelBlowClaim = t.object("DarkDuelBlowClaim", {
+    blowId: t.string(),
+    duelId: t.string(),
+    garbageCells: t.u32(),
+    clutched: t.bool(),
+    fromHold: t.bool()
+  });
+  var DarkDuelBoard = t.object("DarkDuelBoard", {
+    owner: t.identity(),
+    duelId: t.string(),
+    cells: t.string(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32(),
+    sequence: t.u32(),
+    updatedAt: t.timestamp()
+  });
+  var DarkDuelDeadline = t.object("DarkDuelDeadline", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt(),
+    duelId: t.string(),
+    kind: t.string()
+  });
+  var DarkDuelFraction = t.object("DarkDuelFraction", {
+    fractionId: t.string(),
+    duelId: t.string(),
+    side: t.string(),
+    kind: t.string(),
+    owed: t.u32()
+  });
+  var DarkDuelHaul = t.object("DarkDuelHaul", {
+    haulId: t.string(),
+    winner: t.identity(),
+    duelId: t.string(),
+    fromName: t.string(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    worn: t.bool(),
+    createdAt: t.timestamp(),
+    instanceId: t.u64()
+  });
+  var DarkDuelHeal = t.object("DarkDuelHeal", {
+    healId: t.string(),
+    duelId: t.string(),
+    side: t.string(),
+    regenHealed: t.u32(),
+    tranquilClaims: t.u32()
+  });
+  var DarkDuelPiece = t.object("DarkDuelPiece", {
+    owner: t.identity(),
+    duelId: t.string(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32(),
+    sequence: t.u32(),
+    updatedAt: t.timestamp()
+  });
+  var DarkDuelQueue = t.object("DarkDuelQueue", {
+    owner: t.identity(),
+    runId: t.string(),
+    displayName: t.string(),
+    level: t.u32(),
+    health: t.u32(),
+    encountersCleared: t.u32(),
+    queuedAt: t.timestamp(),
+    ground: t.string()
+  });
+  var DarkDuelRewind = t.object("DarkDuelRewind", {
+    blowId: t.string(),
+    duelId: t.string(),
+    healer: t.identity(),
+    healed: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var DarkDuelScoreRow = t.object("DarkDuelScoreRow", {
+    duelId: t.string(),
+    oneHealth: t.u32(),
+    twoHealth: t.u32(),
+    oneDamageSent: t.u32(),
+    twoDamageSent: t.u32(),
+    oneBlows: t.u32(),
+    twoBlows: t.u32(),
+    oneBoardBreaks: t.u32(),
+    twoBoardBreaks: t.u32(),
+    onePotions: t.u32(),
+    twoPotions: t.u32(),
+    oneNecklace: t.u32(),
+    twoNecklace: t.u32(),
+    oneShielded: t.bool(),
+    twoShielded: t.bool(),
+    oneBoardBreakCells: t.u32(),
+    twoBoardBreakCells: t.u32()
+  });
+  var DarkDuelStagger = t.object("DarkDuelStagger", {
+    staggerId: t.string(),
+    duelId: t.string(),
+    side: t.string()
+  });
+  var DarkDuelStand = t.object("DarkDuelStand", {
+    standId: t.string(),
+    duelId: t.string(),
+    side: t.string()
+  });
+  var DarkDuelWard = t.object("DarkDuelWard", {
+    wardId: t.string(),
+    duelId: t.string(),
+    side: t.string(),
+    blows: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var DarkHunt = t.object("DarkHunt", {
+    owner: t.identity(),
+    runId: t.string(),
+    baseline: t.u32(),
+    rolledThrough: t.u32(),
+    searchingSinceMicros: t.u64()
+  });
+  var DarkPlayerCount = t.object("DarkPlayerCount", {});
+  var DiaryClaim = t.object("DiaryClaim", {
+    id: t.u64(),
+    owner: t.identity(),
+    regionId: t.string(),
+    tier: t.string(),
+    claimedAt: t.timestamp(),
+    rowsJson: t.string()
+  });
+  var DiaryDailyChart = t.object("DiaryDailyChart", {
+    id: t.u64(),
+    owner: t.identity(),
+    regionId: t.string(),
+    day: t.u64()
+  });
+  var DiaryKills = t.object("DiaryKills", {
+    id: t.u64(),
+    owner: t.identity(),
+    regionId: t.string(),
+    enemyId: t.string(),
+    kills: t.u64()
+  });
+  var DiaryTask = t.object("DiaryTask", {
+    id: t.u64(),
+    owner: t.identity(),
+    taskId: t.string(),
+    value: t.u64(),
+    updatedAt: t.timestamp()
+  });
+  var DuelEscrow = t.object("DuelEscrow", {
+    id: t.u64(),
+    duelId: t.string(),
+    winner: t.identity(),
+    loser: t.identity(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    instanceId: t.u64(),
+    worn: t.bool(),
+    createdAt: t.timestamp()
+  });
+  var DuelEscrowDeadline = t.object("DuelEscrowDeadline", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt(),
+    duelId: t.string()
+  });
+  var DuelHaulTopUp = t.object("DuelHaulTopUp", {
+    duelId: t.string(),
+    winner: t.identity(),
+    loser: t.identity(),
+    loserRunId: t.string(),
+    seed: t.u32(),
+    paidEncounters: t.u32(),
+    claimedEncounters: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var DuelListing = t.object("DuelListing", {
+    listingId: t.string(),
+    owner: t.identity(),
+    displayName: t.string(),
+    level: t.u32(),
+    stake: t.string(),
+    look: t.string(),
+    wins: t.u32(),
+    losses: t.u32(),
+    challenger: t.identity(),
+    challengerName: t.string(),
+    challengerLevel: t.u32(),
+    challengerLook: t.string(),
+    challengerWins: t.u32(),
+    challengerLosses: t.u32(),
+    ownerReady: t.bool(),
+    challengerReady: t.bool(),
+    state: t.string(),
+    postedAt: t.timestamp(),
+    matchedAt: t.timestamp()
+  });
+  var DuelListingDeadline = t.object("DuelListingDeadline", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt(),
+    listingId: t.string(),
+    kind: t.string(),
+    stamp: t.string()
+  });
+  var DuelListingView = t.object("DuelListingView", {
+    listingId: t.string(),
+    displayName: t.string(),
+    level: t.u32(),
+    stake: t.string(),
+    look: t.string(),
+    wins: t.u32(),
+    losses: t.u32(),
+    state: t.string(),
+    postedAt: t.timestamp(),
+    isMine: t.bool()
+  });
+  var DuelListings = t.object("DuelListings", {});
+  var DuelNotice = t.object("DuelNotice", {
+    id: t.u64(),
+    owner: t.identity(),
+    duelId: t.string(),
+    side: t.string(),
+    opponentName: t.string(),
+    at: t.timestamp()
+  });
+  var DuelRecord = t.object("DuelRecord", {
+    owner: t.identity(),
+    wins: t.u32(),
+    losses: t.u32(),
+    updatedAt: t.timestamp()
+  });
+  var DuelSeat = t.object("DuelSeat", {
+    owner: t.identity(),
+    duelId: t.string(),
+    opponent: t.identity(),
+    ground: t.string(),
+    state: t.string(),
+    decidedAt: t.timestamp(),
+    finishedDuelId: t.string()
+  });
+  var DuelVerdict = t.object("DuelVerdict", {
+    duelId: t.string(),
+    winner: t.identity(),
+    loser: t.identity(),
+    winnerRunId: t.string(),
+    state: t.string(),
+    reason: t.string(),
+    decidedAt: t.timestamp()
+  });
+  var DungeonProgress = t.object("DungeonProgress", {
+    id: t.u64(),
+    owner: t.identity(),
+    dungeonId: t.string(),
+    storyCompleted: t.bool(),
+    completedAt: t.timestamp()
+  });
+  var EndlessCourse = t.object("EndlessCourse", {
+    owner: t.identity(),
+    courseJson: t.string(),
+    ends: t.string(),
+    asks: t.bool(),
+    updatedAt: t.timestamp()
+  });
+  var EndlessRecord = t.object("EndlessRecord", {
+    id: t.u64(),
+    owner: t.identity(),
+    dungeonId: t.string(),
+    bestEncounter: t.u32(),
+    bestRound: t.u32(),
+    reachedAt: t.timestamp()
+  });
+  var EndlessRegionSeen = t.object("EndlessRegionSeen", {
+    id: t.u64(),
+    owner: t.identity(),
+    regionId: t.string(),
+    firstSeenAt: t.timestamp(),
+    timesEntered: t.u32(),
+    chestsOpened: t.u32(),
+    deepestEncounter: t.u32()
+  });
+  var EndlessRoadWalked = t.object("EndlessRoadWalked", {
+    id: t.u64(),
+    owner: t.identity(),
+    roadKey: t.string(),
+    times: t.u32(),
+    firstWalkedAt: t.timestamp()
+  });
+  var EquipmentInventoryState = t.object("EquipmentInventoryState", {
+    owner: t.identity(),
+    separated: t.bool(),
+    migratedAt: t.timestamp()
+  });
+  var EquippedBoost = t.object("EquippedBoost", {
+    id: t.u64(),
+    owner: t.identity(),
+    slot: t.string(),
+    itemId: t.string(),
+    quantity: t.u32()
+  });
+  var EquippedFood = t.object("EquippedFood", {
+    owner: t.identity(),
+    itemId: t.string(),
+    quantity: t.u32()
+  });
+  var EquippedItem = t.object("EquippedItem", {
+    id: t.u64(),
+    owner: t.identity(),
+    slot: t.string(),
+    itemId: t.string(),
+    instanceId: t.u64()
+  });
+  var FarmBoardEvent = t.object("FarmBoardEvent", {
+    room: t.u32(),
+    slot: t.u8(),
+    board: t.byteArray(),
+    activeKind: t.i8(),
+    activeX: t.i8(),
+    activeY: t.u8(),
+    activeRotation: t.u8(),
+    score: t.u32(),
+    lines: t.u16(),
+    toppedOut: t.bool()
+  });
+  var FarmBoardState = t.object("FarmBoardState", {
+    owner: t.identity(),
+    matchId: t.string(),
+    displayName: t.string(),
+    cells: t.string(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32(),
+    score: t.u32(),
+    linesCleared: t.u32(),
+    toppedOut: t.bool(),
+    sequence: t.u32(),
+    updatedAt: t.timestamp()
+  });
+  var FarmDarkCleared = t.object("FarmDarkCleared", {
+    clearKey: t.string(),
+    matchId: t.string(),
+    round: t.u32(),
+    owner: t.identity(),
+    clearedAt: t.timestamp()
+  });
+  var FarmDarkEscrow = t.object("FarmDarkEscrow", {
+    escrowId: t.string(),
+    matchId: t.string(),
+    round: t.u32(),
+    contributor: t.identity(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var FarmDarkHaul = t.object("FarmDarkHaul", {
+    haulId: t.string(),
+    winner: t.identity(),
+    round: t.u32(),
+    fromName: t.string(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var FarmDarkRound = t.object("FarmDarkRound", {
+    roundKey: t.string(),
+    matchId: t.string(),
+    round: t.u32(),
+    winner: t.identity(),
+    winnerName: t.string(),
+    decidedAt: t.timestamp()
+  });
+  var FarmKeyframeRowV1 = t.object("FarmKeyframeRowV1", {
+    slot: t.u32(),
+    board: t.byteArray(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32(),
+    score: t.u32(),
+    linesCleared: t.u32(),
+    toppedOut: t.bool()
+  });
+  var FarmLockEvent = t.object("FarmLockEvent", {
+    room: t.u32(),
+    slot: t.u8(),
+    lockKind: t.u8(),
+    lockX: t.i8(),
+    lockY: t.u8(),
+    lockRotation: t.u8(),
+    checksum: t.u16(),
+    activeKind: t.i8(),
+    activeX: t.i8(),
+    activeY: t.u8(),
+    activeRotation: t.u8(),
+    score: t.u32(),
+    lines: t.u16()
+  });
+  var FarmMatch = t.object("FarmMatch", {
+    matchId: t.string(),
+    playerOne: t.identity(),
+    playerTwo: t.identity(),
+    createdAt: t.timestamp()
+  });
+  var FarmMatchMember = t.object("FarmMatchMember", {
+    owner: t.identity(),
+    matchId: t.string(),
+    opponent: t.identity()
+  });
+  var FarmMatchmakingQueue = t.object("FarmMatchmakingQueue", {
+    owner: t.identity(),
+    queuedAt: t.timestamp()
+  });
+  var FarmPieceState = t.object("FarmPieceState", {
+    owner: t.identity(),
+    matchId: t.string(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32(),
+    sequence: t.u32(),
+    updatedAt: t.timestamp()
+  });
+  var FarmPlayerCountRow = t.object("FarmPlayerCountRow", {
+    mode: t.string(),
+    players: t.u32()
+  });
+  var FarmPlayerCounts = t.object("FarmPlayerCounts", {});
+  var FarmPoseEvent = t.object("FarmPoseEvent", {
+    room: t.u32(),
+    slot: t.u8(),
+    kind: t.i8(),
+    x: t.i8(),
+    y: t.u8(),
+    rotation: t.u8()
+  });
+  var FarmPrivateRoom = t.object("FarmPrivateRoom", {
+    code: t.string(),
+    host: t.identity(),
+    createdAt: t.timestamp()
+  });
+  var FarmPvpAttack = t.object("FarmPvpAttack", {
+    attackId: t.string(),
+    recipient: t.identity(),
+    sender: t.identity(),
+    lines: t.u32(),
+    hole: t.u32(),
+    createdAt: t.timestamp(),
+    ordinal: t.u32()
+  });
+  var FarmPvpMemberV2 = t.object("FarmPvpMemberV2", {
+    owner: t.identity(),
+    matchId: t.string(),
+    slot: t.u32(),
+    alive: t.bool(),
+    placement: t.u32(),
+    joinedAt: t.timestamp()
+  });
+  var FarmPvpSession = t.object("FarmPvpSession", {
+    owner: t.identity(),
+    mode: t.string(),
+    privateCode: t.string(),
+    matchId: t.string(),
+    wins: t.u32(),
+    losses: t.u32(),
+    round: t.u32(),
+    roundState: t.string(),
+    winnerName: t.string(),
+    attackSequence: t.u32(),
+    joinedAt: t.timestamp(),
+    relayCount: t.u32(),
+    claimedAttackTotal: t.u32()
+  });
+  var FarmRecord = t.object("FarmRecord", {
+    id: t.u64(),
+    owner: t.identity(),
+    mode: t.string(),
+    bestLines: t.u32(),
+    bestLevel: t.u32(),
+    reachedAt: t.timestamp()
+  });
+  var FarmRosterRowV1 = t.object("FarmRosterRowV1", {
+    slot: t.u32(),
+    owner: t.identity(),
+    alive: t.bool(),
+    placement: t.u32(),
+    ready: t.bool(),
+    displayName: t.string()
+  });
+  var FarmRosterRowV2 = t.object("FarmRosterRowV2", {
+    slot: t.u32(),
+    owner: t.identity(),
+    alive: t.bool(),
+    placement: t.u32(),
+    ready: t.bool(),
+    displayName: t.string(),
+    level: t.u32()
+  });
+  var FarmRoundCountdown = t.object("FarmRoundCountdown", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt(),
+    matchId: t.string(),
+    round: t.u32()
+  });
+  var FarmWaitingRun = t.object("FarmWaitingRun", {
+    owner: t.identity(),
+    runId: t.string(),
+    seed: t.u32(),
+    startedAt: t.timestamp(),
+    keptAt: t.timestamp()
+  });
+  var FarmWaitingRunSnapshot = t.object("FarmWaitingRunSnapshot", {
+    owner: t.identity(),
+    runId: t.string(),
+    snapshotJson: t.string()
+  });
+  var FeatClaim = t.object("FeatClaim", {
+    id: t.u64(),
+    owner: t.identity(),
+    featId: t.string(),
+    claimedAt: t.timestamp()
+  });
+  var FriendLink = t.object("FriendLink", {
+    id: t.u64(),
+    owner: t.identity(),
+    friend: t.identity(),
+    since: t.timestamp()
+  });
+  var FriendRequest = t.object("FriendRequest", {
+    id: t.u64(),
+    sender: t.identity(),
+    receiver: t.identity(),
+    sentAt: t.timestamp(),
+    state: t.string()
+  });
+  var FriendRequestRow = t.object("FriendRequestRow", {
+    requestId: t.u64(),
+    direction: t.string(),
+    name: t.string(),
+    level: t.u32(),
+    sentAt: t.timestamp(),
+    look: t.string()
+  });
+  var FriendRow = t.object("FriendRow", {
+    friendId: t.u64(),
+    name: t.string(),
+    level: t.u32(),
+    online: t.bool(),
+    activity: t.string(),
+    lastSeenMicros: t.u64(),
+    since: t.timestamp(),
+    look: t.string()
+  });
+  var FriendSettings = t.object("FriendSettings", {
+    owner: t.identity(),
+    requests: t.string(),
+    appearOffline: t.bool(),
+    showActivity: t.bool(),
+    acceptInvites: t.bool(),
+    onlineToasts: t.bool()
+  });
+  var GameInvite = t.object("GameInvite", {
+    id: t.u64(),
+    sender: t.identity(),
+    receiver: t.identity(),
+    kind: t.string(),
+    roomRef: t.string(),
+    code: t.string(),
+    dungeonId: t.string(),
+    sentAt: t.timestamp(),
+    expiresMicros: t.u64(),
+    state: t.string()
+  });
+  var GameInviteRow = t.object("GameInviteRow", {
+    inviteId: t.u64(),
+    direction: t.string(),
+    name: t.string(),
+    level: t.u32(),
+    kind: t.string(),
+    dungeonId: t.string(),
+    code: t.string(),
+    filled: t.u32(),
+    capacity: t.u32(),
+    stakes: t.bool(),
+    expiresMicros: t.u64(),
+    state: t.string(),
+    look: t.string()
+  });
+  var GearInstance = t.object("GearInstance", {
+    instanceId: t.u64(),
+    owner: t.identity(),
+    itemId: t.string(),
+    place: t.string(),
+    modifierId: t.string(),
+    value: t.u32(),
+    rolls: t.u32(),
+    scrapSpent: t.u32(),
+    createdAt: t.timestamp(),
+    rolledAt: t.timestamp()
+  });
+  var GearInsurance = t.object("GearInsurance", {
+    owner: t.identity(),
+    scope: t.string(),
+    ref: t.string(),
+    slot: t.string(),
+    itemId: t.string(),
+    scrapPaid: t.u32(),
+    boughtAt: t.timestamp(),
+    sealItemId: t.string(),
+    instanceId: t.u64()
+  });
+  var GearLoadout = t.object("GearLoadout", {
+    id: t.u64(),
+    owner: t.identity(),
+    position: t.u32(),
+    label: t.string(),
+    slotsJson: t.string(),
+    combatBuildId: t.u64(),
+    skillsBuildId: t.u64(),
+    updatedAt: t.timestamp()
+  });
+  var GearOrnament = t.object("GearOrnament", {
+    instanceId: t.u64(),
+    kitItemId: t.string(),
+    appliedAt: t.timestamp()
+  });
+  var InventoryPosition = t.object("InventoryPosition", {
+    id: t.u64(),
+    owner: t.identity(),
+    itemId: t.string(),
+    position: t.u32()
+  });
+  var InventoryStack = t.object("InventoryStack", {
+    id: t.u64(),
+    owner: t.identity(),
+    itemId: t.string(),
+    quantity: t.u32()
+  });
+  var LearnedSkill = t.object("LearnedSkill", {
+    id: t.u64(),
+    owner: t.identity(),
+    skillId: t.string(),
+    level: t.u32(),
+    equippedSlot: t.option(t.u32())
+  });
+  var LootKey = t.object("LootKey", {
+    id: t.u32(),
+    key: t.string(),
+    setAt: t.timestamp()
+  });
+  var MarketListing = t.object("MarketListing", {
+    id: t.u64(),
+    seller: t.identity(),
+    sellerName: t.string(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    pricePer: t.u32(),
+    createdAt: t.timestamp(),
+    instanceId: t.u64()
+  });
+  var MarketListingLog = t.object("MarketListingLog", {
+    id: t.u64(),
+    seller: t.identity(),
+    buyer: t.identity(),
+    action: t.string(),
+    listingId: t.u64(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    pricePer: t.u32(),
+    at: t.timestamp()
+  });
+  var MarketListingView = t.object("MarketListingView", {
+    listingId: t.string(),
+    sellerName: t.string(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    pricePer: t.u32(),
+    createdAt: t.timestamp(),
+    isMine: t.bool(),
+    instanceId: t.string(),
+    modifierId: t.string(),
+    modifierValue: t.u32(),
+    rolls: t.u32()
+  });
+  var MarketListings = t.object("MarketListings", {});
+  var MarketPriceGuide = t.object("MarketPriceGuide", {});
+  var MarketPriceGuideRow = t.object("MarketPriceGuideRow", {
+    itemId: t.string(),
+    averagePrice: t.u32(),
+    sampleCount: t.u32(),
+    enhancedListings: t.u32()
+  });
+  var MarketSaleCredit = t.object("MarketSaleCredit", {
+    id: t.u64(),
+    seller: t.identity(),
+    buyer: t.identity(),
+    at: t.timestamp()
+  });
+  var MarketSaleNotice = t.object("MarketSaleNotice", {
+    owner: t.identity(),
+    announcedThroughId: t.u64()
+  });
+  var MarketTransaction = t.object("MarketTransaction", {
+    id: t.u64(),
+    owner: t.identity(),
+    kind: t.string(),
+    counterpartyName: t.string(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    pricePer: t.u32(),
+    gold: t.u32(),
+    at: t.timestamp(),
+    modifierId: t.string()
+  });
+  var ModerationAction = t.object("ModerationAction", {
+    id: t.u64(),
+    operator: t.identity(),
+    target: t.identity(),
+    action: t.string(),
+    before: t.string(),
+    after: t.string(),
+    reason: t.string(),
+    at: t.timestamp()
+  });
+  var MyAccountEmail = t.object("MyAccountEmail", {});
+  var MyAccountSettings = t.object("MyAccountSettings", {});
+  var MyActiveRun = t.object("MyActiveRun", {});
+  var MyBadgeLookup = t.object("MyBadgeLookup", {});
+  var MyBadges = t.object("MyBadges", {});
+  var MyBounty = t.object("MyBounty", {});
+  var MyBountyState = t.object("MyBountyState", {});
+  var MyBrokenGear = t.object("MyBrokenGear", {});
+  var MyChatBlocks = t.object("MyChatBlocks", {});
+  var MyChatGlobal = t.object("MyChatGlobal", {});
+  var MyChatRoom = t.object("MyChatRoom", {});
+  var MyChatStatus = t.object("MyChatStatus", {});
+  var MyCheckouts = t.object("MyCheckouts", {});
+  var MyCollectionKills = t.object("MyCollectionKills", {});
+  var MyCollectionLog = t.object("MyCollectionLog", {});
+  var MyDarkChestClaims = t.object("MyDarkChestClaims", {});
+  var MyDarkDeathLoss = t.object("MyDarkDeathLoss", {});
+  var MyDarkDuel = t.object("MyDarkDuel", {});
+  var MyDarkDuelBlows = t.object("MyDarkDuelBlows", {});
+  var MyDarkDuelCore = t.object("MyDarkDuelCore", {});
+  var MyDarkDuelHaul = t.object("MyDarkDuelHaul", {});
+  var MyDarkDuelScore = t.object("MyDarkDuelScore", {});
+  var MyDarkPresence = t.object("MyDarkPresence", {});
+  var MyDiaryClaims = t.object("MyDiaryClaims", {});
+  var MyDiaryDailyCharts = t.object("MyDiaryDailyCharts", {});
+  var MyDiaryTasks = t.object("MyDiaryTasks", {});
+  var MyDuelLobby = t.object("MyDuelLobby", {});
+  var MyDuelNotices = t.object("MyDuelNotices", {});
+  var MyDuelOpponentBoard = t.object("MyDuelOpponentBoard", {});
+  var MyDuelOpponentPiece = t.object("MyDuelOpponentPiece", {});
+  var MyDuelRecord = t.object("MyDuelRecord", {});
+  var MyDungeonProgress = t.object("MyDungeonProgress", {});
+  var MyEndlessCourse = t.object("MyEndlessCourse", {});
+  var MyEndlessRecords = t.object("MyEndlessRecords", {});
+  var MyEndlessRegions = t.object("MyEndlessRegions", {});
+  var MyEquipment = t.object("MyEquipment", {});
+  var MyEquippedBoosts = t.object("MyEquippedBoosts", {});
+  var MyEquippedFood = t.object("MyEquippedFood", {});
+  var MyFarmDarkHaul = t.object("MyFarmDarkHaul", {});
+  var MyFarmPvpAttacks = t.object("MyFarmPvpAttacks", {});
+  var MyFarmPvpMemberV2 = t.object("MyFarmPvpMemberV2", {});
+  var MyFarmPvpSession = t.object("MyFarmPvpSession", {});
+  var MyFarmRecords = t.object("MyFarmRecords", {});
+  var MyFeatClaims = t.object("MyFeatClaims", {});
+  var MyFriendRequests = t.object("MyFriendRequests", {});
+  var MyFriendSettings = t.object("MyFriendSettings", {});
+  var MyFriends = t.object("MyFriends", {});
+  var MyGameInvites = t.object("MyGameInvites", {});
+  var MyGearInstances = t.object("MyGearInstances", {});
+  var MyGearInsurance = t.object("MyGearInsurance", {});
+  var MyGearOrnaments = t.object("MyGearOrnaments", {});
+  var MyInventory = t.object("MyInventory", {});
+  var MyInventoryOrder = t.object("MyInventoryOrder", {});
+  var MyLoadouts = t.object("MyLoadouts", {});
+  var MyMarketSaleNotice = t.object("MyMarketSaleNotice", {});
+  var MyMarketTransactions = t.object("MyMarketTransactions", {});
+  var MyOnboarding = t.object("MyOnboarding", {});
+  var MyParty = t.object("MyParty", {});
+  var MyPartyCore = t.object("MyPartyCore", {});
+  var MyPartyCourse = t.object("MyPartyCourse", {});
+  var MyPartyHeldPay = t.object("MyPartyHeldPay", {});
+  var MyPartyMemberCore = t.object("MyPartyMemberCore", {});
+  var MyPartyMemberScore = t.object("MyPartyMemberScore", {});
+  var MyPartyMembers = t.object("MyPartyMembers", {});
+  var MyPartyOmens = t.object("MyPartyOmens", {});
+  var MyPartyPartnerBoards = t.object("MyPartyPartnerBoards", {});
+  var MyPartyPartnerPay = t.object("MyPartyPartnerPay", {});
+  var MyPartyPartnerPieces = t.object("MyPartyPartnerPieces", {});
+  var MyPartyQueue = t.object("MyPartyQueue", {});
+  var MyPartyScore = t.object("MyPartyScore", {});
+  var MyPartySteps = t.object("MyPartySteps", {});
+  var MyProfile = t.object("MyProfile", {});
+  var MyProfilePreferences = t.object("MyProfilePreferences", {});
+  var MyPurchases = t.object("MyPurchases", {});
+  var MyQuestClaims = t.object("MyQuestClaims", {});
+  var MyQuestStats = t.object("MyQuestStats", {});
+  var MyQuests = t.object("MyQuests", {});
+  var MyRecentPlayers = t.object("MyRecentPlayers", {});
+  var MyReplays = t.object("MyReplays", {});
+  var MyRestrictedAccount = t.object("MyRestrictedAccount", {});
+  var MyRoadsWalked = t.object("MyRoadsWalked", {});
+  var MyRunLootReveals = t.object("MyRunLootReveals", {});
+  var MyRunRefusal = t.object("MyRunRefusal", {});
+  var MySatchelKeep = t.object("MySatchelKeep", {});
+  var MySavedBuilds = t.object("MySavedBuilds", {});
+  var MySentFarmPvpAttacks = t.object("MySentFarmPvpAttacks", {});
+  var MySkills = t.object("MySkills", {});
+  var MySkinUnlocks = t.object("MySkinUnlocks", {});
+  var MySlimeBagKeep = t.object("MySlimeBagKeep", {});
+  var MyStoreStatus = t.object("MyStoreStatus", {});
+  var MyTaskChests = t.object("MyTaskChests", {});
+  var MyTaskState = t.object("MyTaskState", {});
+  var MyTasks = t.object("MyTasks", {});
+  var MyUpgradeProgress = t.object("MyUpgradeProgress", {});
+  var MyUpgradeUnlocks = t.object("MyUpgradeUnlocks", {});
+  var MyWatchedReplay = t.object("MyWatchedReplay", {});
+  var MyWelcomeChest = t.object("MyWelcomeChest", {});
+  var OpponentFarmBoardsCompactV4 = t.object("OpponentFarmBoardsCompactV4", {});
+  var OpponentFarmKeyframesV1 = t.object("OpponentFarmKeyframesV1", {});
+  var OpponentFarmPiecesCompactV3 = t.object("OpponentFarmPiecesCompactV3", {});
+  var OpponentFarmRosterV1 = t.object("OpponentFarmRosterV1", {});
+  var OpponentFarmRosterV2 = t.object("OpponentFarmRosterV2", {});
+  var Party = t.object("Party", {
+    partyId: t.string(),
+    mode: t.string(),
+    dungeonId: t.string(),
+    code: t.string(),
+    state: t.string(),
+    seed: t.u32(),
+    encounterIndex: t.u32(),
+    enemyHealth: t.u32(),
+    enemyMaxHealth: t.u32(),
+    phase: t.string(),
+    chestIndex: t.u32(),
+    soloFromEncounter: t.u32(),
+    stepCount: t.u32(),
+    createdAt: t.timestamp(),
+    startedAt: t.timestamp(),
+    updatedAt: t.timestamp(),
+    attackDueMicros: t.u64(),
+    attackSetMicros: t.u64(),
+    attackNumber: t.u32(),
+    enemyShielded: t.bool()
+  });
+  var PartyBoard = t.object("PartyBoard", {
+    owner: t.identity(),
+    partyId: t.string(),
+    cells: t.string(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32(),
+    sequence: t.u32(),
+    updatedAt: t.timestamp()
+  });
+  var PartyBoardEvent = t.object("PartyBoardEvent", {
+    room: t.u32(),
+    slot: t.u8(),
+    board: t.byteArray(),
+    activeKind: t.i8(),
+    activeX: t.i8(),
+    activeY: t.u8(),
+    activeRotation: t.u8(),
+    score: t.u32(),
+    lines: t.u16(),
+    toppedOut: t.bool()
+  });
+  var PartyBountyPlan = t.object("PartyBountyPlan", {
+    partyId: t.string(),
+    lureJson: t.string(),
+    markedJson: t.string()
+  });
+  var PartyCourse = t.object("PartyCourse", {
+    partyId: t.string(),
+    courseJson: t.string(),
+    ends: t.string(),
+    updatedAt: t.timestamp()
+  });
+  var PartyDamage = t.object("PartyDamage", {
+    damageId: t.string(),
+    partyId: t.string(),
+    slot: t.u32(),
+    encounterIndex: t.u32(),
+    sent: t.u32(),
+    applied: t.u32(),
+    healed: t.u32(),
+    blows: t.u32()
+  });
+  var PartyDeadline = t.object("PartyDeadline", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt(),
+    partyId: t.string(),
+    kind: t.string(),
+    stamp: t.string(),
+    owner: t.identity()
+  });
+  var PartyEffect = t.object("PartyEffect", {
+    effectId: t.string(),
+    partyId: t.string(),
+    slot: t.u32(),
+    encounterIndex: t.u32(),
+    tentacles: t.u32(),
+    staggers: t.u32(),
+    interrupts: t.u32(),
+    thorns: t.u32()
+  });
+  var PartyEndlessPlan = t.object("PartyEndlessPlan", {
+    partyId: t.string(),
+    countsJson: t.string(),
+    members: t.u32(),
+    chartsJson: t.string()
+  });
+  var PartyHeldPayRow = t.object("PartyHeldPayRow", {
+    partyId: t.string(),
+    slot: t.u32(),
+    mine: t.bool(),
+    boundary: t.u32()
+  });
+  var PartyLockEvent = t.object("PartyLockEvent", {
+    room: t.u32(),
+    slot: t.u8(),
+    lockKind: t.u8(),
+    lockX: t.i8(),
+    lockY: t.u8(),
+    lockRotation: t.u8(),
+    checksum: t.u16(),
+    activeKind: t.i8(),
+    activeX: t.i8(),
+    activeY: t.u8(),
+    activeRotation: t.u8(),
+    score: t.u32(),
+    lines: t.u16()
+  });
+  var PartyLure = t.object("PartyLure", {
+    partyId: t.string(),
+    lureBp: t.u32()
+  });
+  var PartyMember = t.object("PartyMember", {
+    memberId: t.string(),
+    partyId: t.string(),
+    owner: t.identity(),
+    slot: t.u32(),
+    state: t.string(),
+    ready: t.bool(),
+    runId: t.string(),
+    name: t.string(),
+    level: t.u32(),
+    armor: t.u32(),
+    look: t.string(),
+    health: t.u32(),
+    blows: t.u32(),
+    lastBlowDamage: t.u32(),
+    damageSent: t.u64(),
+    necklaceUsed: t.bool(),
+    disconnectedMicros: t.u64(),
+    joinedAt: t.timestamp(),
+    snapArmed: t.bool(),
+    revives: t.u32(),
+    healsSent: t.u32(),
+    reviveProgress: t.u32(),
+    bandaged: t.bool()
+  });
+  var PartyMemberScoreRow = t.object("PartyMemberScoreRow", {
+    memberId: t.string(),
+    health: t.u32(),
+    blows: t.u32(),
+    lastBlowDamage: t.u32(),
+    damageSent: t.u64(),
+    snapArmed: t.bool(),
+    necklaceUsed: t.bool(),
+    revives: t.u32(),
+    healsSent: t.u32(),
+    reviveProgress: t.u32(),
+    bandaged: t.bool()
+  });
+  var PartyOmens = t.object("PartyOmens", {
+    partyId: t.string(),
+    wishesJson: t.string(),
+    on: t.bool()
+  });
+  var PartyOmensSlotRow = t.object("PartyOmensSlotRow", {
+    memberId: t.string(),
+    slot: t.u32(),
+    wish: t.string(),
+    seeker: t.bool(),
+    holdout: t.bool(),
+    partyOn: t.bool(),
+    reason: t.string()
+  });
+  var PartyOverkill = t.object("PartyOverkill", {
+    partyId: t.string(),
+    encounterIndex: t.u32(),
+    slot: t.u32(),
+    carry: t.u32()
+  });
+  var PartyPartnerPay = t.object("PartyPartnerPay", {
+    payId: t.string(),
+    partyId: t.string(),
+    slot: t.u32(),
+    viewerSlot: t.u32(),
+    payee: t.identity(),
+    viewer: t.identity(),
+    itemsJson: t.string(),
+    experience: t.u32(),
+    paidAt: t.timestamp()
+  });
+  var PartyPartnerPayRow = t.object("PartyPartnerPayRow", {
+    partyId: t.string(),
+    slot: t.u32(),
+    itemsJson: t.string(),
+    experience: t.u32()
+  });
+  var PartyPetEffects = t.object("PartyPetEffects", {
+    partyId: t.string(),
+    favoredJson: t.string(),
+    goldenKing: t.bool()
+  });
+  var PartyPiece = t.object("PartyPiece", {
+    owner: t.identity(),
+    partyId: t.string(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32(),
+    sequence: t.u32(),
+    updatedAt: t.timestamp()
+  });
+  var PartyProof = t.object("PartyProof", {
+    proofId: t.string(),
+    partyId: t.string(),
+    owner: t.identity(),
+    slot: t.u32(),
+    reach: t.u32(),
+    trace: t.string(),
+    provenAt: t.timestamp()
+  });
+  var PartyProofRefusal = t.object("PartyProofRefusal", {
+    proofId: t.string(),
+    partyId: t.string(),
+    owner: t.identity(),
+    refusedAt: t.timestamp(),
+    reason: t.string()
+  });
+  var PartyQueue = t.object("PartyQueue", {
+    owner: t.identity(),
+    dungeonId: t.string(),
+    level: t.u32(),
+    armor: t.u32(),
+    queuedAt: t.timestamp()
+  });
+  var PartyScoreRow = t.object("PartyScoreRow", {
+    partyId: t.string(),
+    enemyHealth: t.u32(),
+    enemyShielded: t.bool(),
+    attackDueMicros: t.u64(),
+    attackSetMicros: t.u64(),
+    attackNumber: t.u32(),
+    stepCount: t.u32(),
+    updatedAt: t.timestamp()
+  });
+  var PartySeat = t.object("PartySeat", {
+    owner: t.identity(),
+    partyId: t.string(),
+    memberId: t.string(),
+    slot: t.u32()
+  });
+  var PartySettled = t.object("PartySettled", {
+    settledId: t.string(),
+    partyId: t.string(),
+    slot: t.u32(),
+    owner: t.identity(),
+    settledAt: t.timestamp()
+  });
+  var PartySkinBreak = t.object("PartySkinBreak", {
+    breakId: t.string(),
+    partyId: t.string(),
+    slot: t.u32(),
+    encounterIndex: t.u32(),
+    breaks: t.u32()
+  });
+  var PartyStep = t.object("PartyStep", {
+    stepId: t.string(),
+    partyId: t.string(),
+    index: t.u32(),
+    kind: t.string(),
+    encounterIndex: t.u32(),
+    chestIndex: t.u32(),
+    killerSlot: t.u32(),
+    killCombo: t.u32(),
+    scaled: t.bool(),
+    damageJson: t.string(),
+    at: t.timestamp(),
+    attackNumber: t.u32(),
+    snapShotMask: t.u32(),
+    subjectSlot: t.u32(),
+    amount: t.u32(),
+    challenge: t.string()
+  });
+  var PartyTopUp = t.object("PartyTopUp", {
+    topUpId: t.string(),
+    partyId: t.string(),
+    owner: t.identity(),
+    slot: t.u32(),
+    boundary: t.u32(),
+    reach: t.u32(),
+    runSeed: t.u32(),
+    storyVersion: t.u32(),
+    skillsJson: t.string(),
+    chestIndicesJson: t.string(),
+    sealSeals: t.u32(),
+    sealTierBonus: t.u32(),
+    record: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var PaymentEvent = t.object("PaymentEvent", {
+    eventId: t.string(),
+    kind: t.string(),
+    transactionId: t.string(),
+    result: t.string(),
+    receivedAt: t.timestamp()
+  });
+  var PlayerCount = t.object("PlayerCount", {
+    mode: t.string(),
+    players: t.u32()
+  });
+  var PlayerCountRefresh = t.object("PlayerCountRefresh", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt()
+  });
+  var PlayerFeedback = t.object("PlayerFeedback", {
+    id: t.u64(),
+    owner: t.identity(),
+    at: t.timestamp(),
+    category: t.string(),
+    text: t.string(),
+    build: t.string(),
+    diagnostics: t.string()
+  });
+  var PlayerNameColor = t.object("PlayerNameColor", {
+    owner: t.identity(),
+    color: t.u32()
+  });
+  var PlayerProfile = t.object("PlayerProfile", {
+    identity: t.identity(),
+    displayName: t.string(),
+    level: t.u32(),
+    experience: t.u32(),
+    totalExperience: t.u32(),
+    unspentSkillPoints: t.u32(),
+    gold: t.u32(),
+    bestScore: t.u32(),
+    createdAt: t.timestamp(),
+    lastPlayedAt: t.timestamp()
+  });
+  var PlayerReport = t.object("PlayerReport", {
+    id: t.u64(),
+    reporter: t.identity(),
+    target: t.identity(),
+    spokenAs: t.string(),
+    context: t.string(),
+    reason: t.string(),
+    at: t.timestamp()
+  });
+  var PlayerStat = t.object("PlayerStat", {
+    id: t.u64(),
+    owner: t.identity(),
+    key: t.string(),
+    value: t.u32(),
+    updatedAt: t.timestamp()
+  });
+  var PlayerTask = t.object("PlayerTask", {
+    id: t.u64(),
+    owner: t.identity(),
+    cadence: t.string(),
+    period: t.u32(),
+    slot: t.u32(),
+    taskId: t.string(),
+    progress: t.u32(),
+    target: t.u32(),
+    claimed: t.bool(),
+    assignedAt: t.timestamp()
+  });
+  var Presence = t.object("Presence", {
+    owner: t.identity(),
+    online: t.bool(),
+    lastSeen: t.timestamp()
+  });
+  var ProfileName = t.object("ProfileName", {
+    normalizedName: t.string(),
+    owner: t.identity()
+  });
+  var ProfilePreferences = t.object("ProfilePreferences", {
+    identity: t.identity(),
+    nameChosen: t.bool(),
+    createdAt: t.timestamp(),
+    lastSeenAt: t.timestamp(),
+    skinTone: t.u32(),
+    hairStyle: t.u32(),
+    hairColor: t.u32()
+  });
+  var Purchase = t.object("Purchase", {
+    transactionId: t.string(),
+    intentId: t.string(),
+    owner: t.identity(),
+    productId: t.string(),
+    itemId: t.string(),
+    priceCents: t.u32(),
+    currency: t.string(),
+    state: t.string(),
+    granted: t.bool(),
+    paidAt: t.timestamp(),
+    changedAt: t.timestamp(),
+    erased: t.bool()
+  });
+  var PurchaseHold = t.object("PurchaseHold", {
+    owner: t.identity(),
+    reason: t.string(),
+    transactionId: t.string(),
+    since: t.timestamp()
+  });
+  var QuestCatalog = t.object("QuestCatalog", {});
+  var QuestCatalogRow = t.object("QuestCatalogRow", {
+    kind: t.string(),
+    id: t.string(),
+    parent: t.string(),
+    category: t.string(),
+    sortOrder: t.u32(),
+    title: t.string(),
+    description: t.string(),
+    line: t.string(),
+    level: t.u32(),
+    target: t.u32(),
+    rewardsJson: t.string()
+  });
+  var QuestClaim = t.object("QuestClaim", {
+    id: t.u64(),
+    owner: t.identity(),
+    questId: t.string(),
+    claimedAt: t.timestamp()
+  });
+  var QuestDetailRow = t.object("QuestDetailRow", {
+    kind: t.string(),
+    id: t.string(),
+    detailJson: t.string()
+  });
+  var QuestDetails = t.object("QuestDetails", {});
+  var QuestProgressRow = t.object("QuestProgressRow", {
+    questId: t.string(),
+    progress: t.u32(),
+    target: t.u32(),
+    state: t.string()
+  });
+  var RecentPlayer = t.object("RecentPlayer", {
+    id: t.u64(),
+    owner: t.identity(),
+    other: t.identity(),
+    context: t.string(),
+    at: t.timestamp()
+  });
+  var RecentPlayerRow = t.object("RecentPlayerRow", {
+    recentId: t.u64(),
+    name: t.string(),
+    level: t.u32(),
+    context: t.string(),
+    at: t.timestamp(),
+    isFriend: t.bool(),
+    requested: t.bool(),
+    look: t.string()
+  });
+  var ReplayWatch = t.object("ReplayWatch", {
+    owner: t.identity(),
+    replayId: t.u64()
+  });
+  var RestrictedAccount = t.object("RestrictedAccount", {
+    owner: t.identity(),
+    chosenAt: t.timestamp()
+  });
+  var RunHistory = t.object("RunHistory", {
+    id: t.u64(),
+    owner: t.identity(),
+    runId: t.string(),
+    dungeonId: t.string(),
+    score: t.u32(),
+    linesCleared: t.u32(),
+    enemiesDefeated: t.u32(),
+    completed: t.bool(),
+    experienceAwarded: t.u32(),
+    goldAwarded: t.u32(),
+    finishedAt: t.timestamp()
+  });
+  var RunLootReveal = t.object("RunLootReveal", {
+    revealId: t.string(),
+    owner: t.identity(),
+    runId: t.string(),
+    kind: t.string(),
+    index: t.u32(),
+    seed: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var RunOpenRate = t.object("RunOpenRate", {
+    owner: t.identity(),
+    windowStart: t.timestamp(),
+    opened: t.u32()
+  });
+  var RunRefusal = t.object("RunRefusal", {
+    owner: t.identity(),
+    runId: t.string(),
+    command: t.string(),
+    reason: t.string(),
+    refusedAt: t.timestamp(),
+    attempts: t.u32()
+  });
+  var RunReplay = t.object("RunReplay", {
+    id: t.u64(),
+    owner: t.identity(),
+    runId: t.string(),
+    activity: t.string(),
+    kind: t.string(),
+    storyVersion: t.u32(),
+    finishedAt: t.timestamp(),
+    summaryJson: t.string(),
+    best: t.string(),
+    starred: t.bool()
+  });
+  var RunReplayFilm = t.object("RunReplayFilm", {
+    replayId: t.u64(),
+    owner: t.identity(),
+    requestJson: t.string(),
+    trace: t.string()
+  });
+  var RunStats = t.object("RunStats", {
+    id: t.u64(),
+    owner: t.identity(),
+    runId: t.string(),
+    activity: t.string(),
+    settledAt: t.timestamp(),
+    wallSeconds: t.u32(),
+    pieces: t.u32(),
+    piecesPerMinute10: t.u32(),
+    inputsPerPiece100: t.u32(),
+    inputSpread100: t.u32(),
+    lockSpread100: t.u32(),
+    quickLocks: t.u32(),
+    statsJson: t.string()
+  });
+  var RunSubmissionReport = t.object("RunSubmissionReport", {
+    id: t.u64(),
+    owner: t.identity(),
+    at: t.timestamp(),
+    source: t.string(),
+    kind: t.string(),
+    runId: t.string(),
+    command: t.string(),
+    message: t.string(),
+    clientJson: t.string(),
+    serverJson: t.string()
+  });
+  var SatchelKeep = t.object("SatchelKeep", {
+    owner: t.identity(),
+    runId: t.string(),
+    itemId: t.string(),
+    keptAt: t.timestamp(),
+    instanceId: t.u64()
+  });
+  var SavedBuild = t.object("SavedBuild", {
+    id: t.u64(),
+    owner: t.identity(),
+    tree: t.string(),
+    position: t.u32(),
+    label: t.string(),
+    ranksJson: t.string(),
+    active: t.bool(),
+    savedAt: t.timestamp()
+  });
+  var ServerNotice = t.object("ServerNotice", {
+    id: t.u64(),
+    text: t.string(),
+    severity: t.string(),
+    postedAt: t.timestamp(),
+    until: t.timestamp()
+  });
+  var ServerNotices = t.object("ServerNotices", {});
+  var SkillsTreeState = t.object("SkillsTreeState", {
+    owner: t.identity(),
+    treeVersion: t.u32(),
+    respecAt: t.timestamp()
+  });
+  var SkinUnlock = t.object("SkinUnlock", {
+    id: t.u64(),
+    owner: t.identity(),
+    skinId: t.string(),
+    unlockedAt: t.timestamp()
+  });
+  var SlimeBagKeep = t.object("SlimeBagKeep", {
+    owner: t.identity(),
+    runId: t.string(),
+    keptJson: t.string(),
+    keptAt: t.timestamp()
+  });
+  var SlimeBestWaveRow = t.object("SlimeBestWaveRow", {
+    board: t.string(),
+    rank: t.u32(),
+    displayName: t.string(),
+    wave: t.u32()
+  });
+  var SlimeBestWaves = t.object("SlimeBestWaves", {});
+  var StoreConfig = t.object("StoreConfig", {
+    id: t.u32(),
+    mode: t.string(),
+    updatedAt: t.timestamp()
+  });
+  var StoreOfferRow = t.object("StoreOfferRow", {
+    productId: t.string(),
+    itemId: t.string(),
+    name: t.string(),
+    priceCents: t.u32(),
+    currency: t.string(),
+    onSale: t.bool()
+  });
+  var StoreOffers = t.object("StoreOffers", {});
+  var StoreReconcile = t.object("StoreReconcile", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt()
+  });
+  var StoreStatusRow = t.object("StoreStatusRow", {
+    open: t.bool(),
+    paused: t.bool(),
+    spentThisMonthCents: t.u32(),
+    monthlyCapCents: t.u32()
+  });
+  var StoreTester = t.object("StoreTester", {
+    owner: t.identity(),
+    addedAt: t.timestamp()
+  });
+  var StoryRouteReset = t.object("StoryRouteReset", {
+    id: t.string(),
+    appliedAt: t.timestamp()
+  });
+  var TaskChest = t.object("TaskChest", {
+    id: t.u64(),
+    owner: t.identity(),
+    cadence: t.string(),
+    taskId: t.string(),
+    tier: t.u32(),
+    rowsJson: t.string(),
+    openedAt: t.timestamp()
+  });
+  var TaskState = t.object("TaskState", {
+    owner: t.identity(),
+    dailySeen: t.u32(),
+    weeklySeen: t.u32(),
+    dailyReroll: t.u32(),
+    weeklyReroll: t.u32(),
+    updatedAt: t.timestamp(),
+    dailyRerollsUsed: t.u32()
+  });
+  var UpgradeProgress = t.object("UpgradeProgress", {
+    owner: t.identity(),
+    level: t.u32(),
+    combatEarned: t.u32(),
+    combatSpent: t.u32(),
+    combatAvailable: t.u32(),
+    skillsEarned: t.u32(),
+    skillsSpent: t.u32(),
+    skillsAvailable: t.u32(),
+    buildEarned: t.u32(),
+    buildSpent: t.u32(),
+    buildAvailable: t.u32()
+  });
+  var UpgradeUnlock = t.object("UpgradeUnlock", {
+    id: t.u64(),
+    owner: t.identity(),
+    tree: t.string(),
+    upgradeId: t.string(),
+    rank: t.u32(),
+    pointCost: t.u32()
+  });
+  var WelcomeChestClaim = t.object("WelcomeChestClaim", {
+    owner: t.identity(),
+    claimedAt: t.timestamp(),
+    rowsJson: t.string(),
+    revealed: t.bool()
+  });
+
+  // src/module_bindings/start_checkout_procedure.ts
+  var params3 = {
+    productId: t.string(),
+    returnTo: t.string()
+  };
+  var returnType3 = CheckoutAnswer;
+
   // src/module_bindings/bounty_shop_table.ts
   var bounty_shop_table_default = t.row({
     kind: t.string(),
@@ -11183,6 +13144,12 @@ ${ty.variants.map(
     averagePrice: t.u32().name("average_price"),
     sampleCount: t.u32().name("sample_count"),
     enhancedListings: t.u32().name("enhanced_listings")
+  });
+
+  // src/module_bindings/my_account_email_table.ts
+  var my_account_email_table_default = t.row({
+    masked: t.string(),
+    verified: t.bool()
   });
 
   // src/module_bindings/my_account_settings_table.ts
@@ -11314,6 +13281,21 @@ ${ty.variants.map(
     channel: t.string(),
     presetsOnly: t.bool().name("presets_only"),
     globalMinLevel: t.u32().name("global_min_level")
+  });
+
+  // src/module_bindings/my_checkouts_table.ts
+  var my_checkouts_table_default = t.row({
+    intentId: t.string().primaryKey().name("intent_id"),
+    owner: t.identity(),
+    productId: t.string().name("product_id"),
+    priceCents: t.u32().name("price_cents"),
+    currency: t.string(),
+    state: t.string(),
+    basketIdent: t.string().name("basket_ident"),
+    checkoutUrl: t.string().name("checkout_url"),
+    totalCents: t.u32().name("total_cents"),
+    createdAt: t.timestamp().name("created_at"),
+    updatedAt: t.timestamp().name("updated_at")
   });
 
   // src/module_bindings/my_collection_kills_table.ts
@@ -12134,6 +14116,22 @@ ${ty.variants.map(
     hairColor: t.u32().name("hair_color")
   });
 
+  // src/module_bindings/my_purchases_table.ts
+  var my_purchases_table_default = t.row({
+    transactionId: t.string().primaryKey().name("transaction_id"),
+    intentId: t.string().name("intent_id"),
+    owner: t.identity(),
+    productId: t.string().name("product_id"),
+    itemId: t.string().name("item_id"),
+    priceCents: t.u32().name("price_cents"),
+    currency: t.string(),
+    state: t.string(),
+    granted: t.bool(),
+    paidAt: t.timestamp().name("paid_at"),
+    changedAt: t.timestamp().name("changed_at"),
+    erased: t.bool()
+  });
+
   // src/module_bindings/my_quest_claims_table.ts
   var my_quest_claims_table_default = t.row({
     id: t.u64().primaryKey(),
@@ -12276,6 +14274,14 @@ ${ty.variants.map(
     runId: t.string().name("run_id"),
     keptJson: t.string().name("kept_json"),
     keptAt: t.timestamp().name("kept_at")
+  });
+
+  // src/module_bindings/my_store_status_table.ts
+  var my_store_status_table_default = t.row({
+    open: t.bool(),
+    paused: t.bool(),
+    spentThisMonthCents: t.u32().name("spent_this_month_cents"),
+    monthlyCapCents: t.u32().name("monthly_cap_cents")
   });
 
   // src/module_bindings/my_task_chests_table.ts
@@ -12486,6 +14492,16 @@ ${ty.variants.map(
     wave: t.u32()
   });
 
+  // src/module_bindings/store_offers_table.ts
+  var store_offers_table_default = t.row({
+    productId: t.string().name("product_id"),
+    itemId: t.string().name("item_id"),
+    name: t.string(),
+    priceCents: t.u32().name("price_cents"),
+    currency: t.string(),
+    onSale: t.bool().name("on_sale")
+  });
+
   // src/module_bindings/index.ts
   var tablesSchema = schema({
     farmBoardEvent: table({
@@ -12573,6 +14589,11 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, market_price_guide_table_default),
+    myAccountEmail: table({
+      name: "my_account_email",
+      indexes: [],
+      constraints: []
+    }, my_account_email_table_default),
     myAccountSettings: table({
       name: "my_account_settings",
       indexes: [],
@@ -12628,6 +14649,11 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_chat_status_table_default),
+    myCheckouts: table({
+      name: "my_checkouts",
+      indexes: [],
+      constraints: []
+    }, my_checkouts_table_default),
     myCollectionKills: table({
       name: "my_collection_kills",
       indexes: [],
@@ -12928,6 +14954,11 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_profile_preferences_table_default),
+    myPurchases: table({
+      name: "my_purchases",
+      indexes: [],
+      constraints: []
+    }, my_purchases_table_default),
     myQuestClaims: table({
       name: "my_quest_claims",
       indexes: [],
@@ -13003,6 +15034,11 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_slime_bag_keep_table_default),
+    myStoreStatus: table({
+      name: "my_store_status",
+      indexes: [],
+      constraints: []
+    }, my_store_status_table_default),
     myTaskChests: table({
       name: "my_task_chests",
       indexes: [],
@@ -13082,7 +15118,12 @@ ${ty.variants.map(
       name: "slime_best_waves",
       indexes: [],
       constraints: []
-    }, slime_best_waves_table_default)
+    }, slime_best_waves_table_default),
+    storeOffers: table({
+      name: "store_offers",
+      indexes: [],
+      constraints: []
+    }, store_offers_table_default)
   });
   var reducersSchema = reducers(
     reducerSchema("abandon_run", abandon_run_reducer_default),
@@ -13097,6 +15138,7 @@ ${ty.variants.map(
     reducerSchema("buy_bounty_reward", buy_bounty_reward_reducer_default),
     reducerSchema("buy_market_listing", buy_market_listing_reducer_default),
     reducerSchema("buy_shop_item", buy_shop_item_reducer_default),
+    reducerSchema("cancel_checkout", cancel_checkout_reducer_default),
     reducerSchema("cancel_friend_request", cancel_friend_request_reducer_default),
     reducerSchema("cancel_market_listing", cancel_market_listing_reducer_default),
     reducerSchema("challenge_duel_listing", challenge_duel_listing_reducer_default),
@@ -13168,6 +15210,7 @@ ${ty.variants.map(
     reducerSchema("operator_chat_unmute", operator_chat_unmute_reducer_default),
     reducerSchema("operator_clear_notices", operator_clear_notices_reducer_default),
     reducerSchema("operator_grant_badge", operator_grant_badge_reducer_default),
+    reducerSchema("operator_lift_purchase_hold", operator_lift_purchase_hold_reducer_default),
     reducerSchema("operator_lift_suspension", operator_lift_suspension_reducer_default),
     reducerSchema("operator_post_notice", operator_post_notice_reducer_default),
     reducerSchema("operator_regrade_enhancements", operator_regrade_enhancements_reducer_default),
@@ -13175,6 +15218,8 @@ ${ty.variants.map(
     reducerSchema("operator_resettle_refused_run", operator_resettle_refused_run_reducer_default),
     reducerSchema("operator_revoke_badge", operator_revoke_badge_reducer_default),
     reducerSchema("operator_set_loot_key", operator_set_loot_key_reducer_default),
+    reducerSchema("operator_store_set_mode", operator_store_set_mode_reducer_default),
+    reducerSchema("operator_store_tester", operator_store_tester_reducer_default),
     reducerSchema("operator_suspend_account", operator_suspend_account_reducer_default),
     reducerSchema("post_duel_listing", post_duel_listing_reducer_default),
     reducerSchema("prove_party_trace", prove_party_trace_reducer_default),
@@ -13267,7 +15312,11 @@ ${ty.variants.map(
     reducerSchema("watch_replay", watch_replay_reducer_default),
     reducerSchema("yield_dark_duel", yield_dark_duel_reducer_default)
   );
-  var proceduresSchema = procedures();
+  var proceduresSchema = procedures(
+    procedureSchema("operator_account_email", params, returnType),
+    procedureSchema("operator_store_reconcile", params2, returnType2),
+    procedureSchema("start_checkout", params3, returnType3)
+  );
   var REMOTE_MODULE = {
     versionInfo: {
       cliVersion: "2.15.0"
@@ -13284,6 +15333,7 @@ ${ty.variants.map(
     "farm_player_counts": "farmPlayerCounts",
     "market_listings": "marketListings",
     "market_price_guide": "marketPriceGuide",
+    "my_account_email": "myAccountEmail",
     "my_account_settings": "myAccountSettings",
     "my_active_run": "myActiveRun",
     "my_badge_lookup": "myBadgeLookup",
@@ -13295,6 +15345,7 @@ ${ty.variants.map(
     "my_chat_global": "myChatGlobal",
     "my_chat_room": "myChatRoom",
     "my_chat_status": "myChatStatus",
+    "my_checkouts": "myCheckouts",
     "my_collection_kills": "myCollectionKills",
     "my_collection_log": "myCollectionLog",
     "my_dark_chest_claims": "myDarkChestClaims",
@@ -13355,6 +15406,7 @@ ${ty.variants.map(
     "my_party_steps": "myPartySteps",
     "my_profile": "myProfile",
     "my_profile_preferences": "myProfilePreferences",
+    "my_purchases": "myPurchases",
     "my_quest_claims": "myQuestClaims",
     "my_quest_stats": "myQuestStats",
     "my_quests": "myQuests",
@@ -13370,6 +15422,7 @@ ${ty.variants.map(
     "my_skills": "mySkills",
     "my_skin_unlocks": "mySkinUnlocks",
     "my_slime_bag_keep": "mySlimeBagKeep",
+    "my_store_status": "myStoreStatus",
     "my_task_chests": "myTaskChests",
     "my_task_state": "myTaskState",
     "my_tasks": "myTasks",
@@ -13385,7 +15438,8 @@ ${ty.variants.map(
     "quest_catalog": "questCatalog",
     "quest_details": "questDetails",
     "server_notices": "serverNotices",
-    "slime_best_waves": "slimeBestWaves"
+    "slime_best_waves": "slimeBestWaves",
+    "store_offers": "storeOffers"
   };
   function __withTableAccessorAliases(target, freeze = false) {
     const out = Object.create(Object.getPrototypeOf(target));
@@ -17314,6 +19368,83 @@ ${ty.variants.map(
     };
   }
 
+  // src/checkout.ts
+  var CHECKOUT_POPUP_NAME = "ldbg_checkout";
+  var POPUP_FEATURES2 = "popup=yes,width=520,height=820,resizable=yes,scrollbars=yes";
+  var CHECKOUT_HOSTS = ["pay.tebex.io", "checkout.tebex.io"];
+  function isCheckoutUrl(url) {
+    if (typeof url !== "string") return false;
+    try {
+      const parsed = new URL(url);
+      return parsed.protocol === "https:" && CHECKOUT_HOSTS.includes(parsed.hostname.toLowerCase()) && parsed.username === "" && parsed.password === "";
+    } catch {
+      return false;
+    }
+  }
+  function returnPageFor(origin) {
+    return origin === "http://127.0.0.1:8060" ? "local" : "live";
+  }
+  var watcher = null;
+  function inDesktopShell() {
+    return Boolean(window.ldbgClient);
+  }
+  function watchPopup(popup, intentId) {
+    if (watcher !== null) window.clearInterval(watcher);
+    watcher = window.setInterval(() => {
+      if (!popup.closed) return;
+      if (watcher !== null) window.clearInterval(watcher);
+      watcher = null;
+      emit({ type: "checkout", state: "closed", intentId });
+    }, 500);
+  }
+  function beginCheckout(productId) {
+    const connection = live.connection;
+    if (!connection || !live.coreSubscriptionReady || typeof connection.procedures?.startCheckout !== "function") {
+      emit({ type: "checkout", state: "refused", message: "You're not connected." });
+      return false;
+    }
+    let popup = null;
+    if (!inDesktopShell()) {
+      popup = window.open("about:blank", CHECKOUT_POPUP_NAME, POPUP_FEATURES2);
+      if (!popup) {
+        emit({ type: "checkout", state: "blocked", message: "Your browser blocked the checkout window. Allow pop-ups for this page and press BUY again." });
+        return false;
+      }
+      try {
+        popup.document.title = "Opening the checkout\u2026";
+      } catch {
+      }
+    }
+    emit({ type: "checkout", state: "opening", productId });
+    Promise.resolve(connection.procedures.startCheckout({ productId, returnTo: returnPageFor(window.location.origin) })).then((answer) => {
+      const error = String(answer?.error ?? "");
+      const url = answer?.url;
+      if (error !== "" || !isCheckoutUrl(url)) {
+        popup?.close();
+        emit({ type: "checkout", state: "refused", message: error || "The checkout could not be opened. Try again in a moment." });
+        return;
+      }
+      const intentId = String(answer.intentId ?? "");
+      if (popup && !popup.closed) {
+        popup.location.href = url;
+        watchPopup(popup, intentId);
+      } else {
+        window.open(url, "_blank", "noopener");
+      }
+      emit({
+        type: "checkout",
+        state: "opened",
+        intentId,
+        totalCents: Number(answer.totalCents ?? 0),
+        currency: String(answer.currency ?? "")
+      });
+    }).catch(() => {
+      popup?.close();
+      emit({ type: "checkout", state: "refused", message: "The checkout could not be opened. Try again in a moment." });
+    });
+    return true;
+  }
+
   // src/index.ts
   installDiagnostics();
   for (const eventName of ["pointerdown", "keydown", "touchstart", "focus"]) {
@@ -17332,6 +19463,7 @@ ${ty.variants.map(
     setClientContext,
     noteUserActivity,
     callReducer,
+    beginCheckout,
     getAuthStatus,
     snapshotDiagnostics,
     reconnectBackend,

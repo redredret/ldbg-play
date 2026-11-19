@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>LDBG checkout</title>
+<!-- Where Tebex's checkout sends the buyer back to (spacetimedb/src/store_catalog.ts,
+     CHECKOUT_RETURN_PAGES; docs/PURCHASES_AND_EMAIL_PLAN.md). It reads nothing from
+     its address and tells the game nothing: the game learns of a payment only from
+     the server, once Tebex's signed webhook has reached it. -->
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #1d1b18; color: #ece6d8;
+         font: 16px/1.5 system-ui, sans-serif; text-align: center; padding: 0 16px; }
+  h1 { font-size: 20px; letter-spacing: 0.04em; margin: 0 0 8px; }
+  p { margin: 0; color: #b9b1a0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>BACK TO THE GAME</h1>
+  <p>You can close this window. Anything you bought shows up in your bag in a moment.</p>
+</main>
+<script>
+  // Only a window the game opened closes itself; a page opened any other way stays.
+  if (window.opener) setTimeout(function () { window.close(); }, 2500);
+</script>
+</body>
+</html>
