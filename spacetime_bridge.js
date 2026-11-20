@@ -19478,7 +19478,7 @@ ${ty.variants.map(
       const url = answer?.url;
       if (error !== "" || !isCheckoutUrl(url)) {
         popup?.close();
-        emit({ type: "checkout", state: "refused", message: error || "The checkout could not be opened. Try again in a moment." });
+        emit({ type: "checkout", state: "refused", message: error || "The checkout couldn't open. Try again in a moment." });
         return;
       }
       const intentId = String(answer.intentId ?? "");
@@ -19497,7 +19497,7 @@ ${ty.variants.map(
       });
     }).catch(() => {
       popup?.close();
-      emit({ type: "checkout", state: "refused", message: "The checkout could not be opened. Try again in a moment." });
+      emit({ type: "checkout", state: "refused", message: "The checkout couldn't open. Try again in a moment." });
     });
     return true;
   }

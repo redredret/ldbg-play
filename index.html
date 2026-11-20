@@ -2,7 +2,7 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8">
-		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-K1fbeScte1mEWv44+1tRVo/b/mdV2EHpZLMU/45aBf4=' 'sha256-/iCpl8ITmahiHMPWnImQi334xjsAcmG44G/kOohOskw=' 'sha256-M2Jo+1Vlgy5K9gpIxmzYf2VagZw+Pbz2ELGdIdR4qrM=' 'sha256-9VPBh7glZSMR5NsV0ub2tkwhhWbaTmvscstzvs2Nn78='; style-src 'self' 'sha256-XXIxhGnoHNDsuA8o1ny1OVg6j5CsCqkCosrLmw21iXw='; img-src 'self' data: blob:; connect-src 'self' https://maincloud.spacetimedb.com wss://maincloud.spacetimedb.com https://auth.spacetimedb.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-K1fbeScte1mEWv44+1tRVo/b/mdV2EHpZLMU/45aBf4=' 'sha256-/iCpl8ITmahiHMPWnImQi334xjsAcmG44G/kOohOskw=' 'sha256-M2Jo+1Vlgy5K9gpIxmzYf2VagZw+Pbz2ELGdIdR4qrM=' 'sha256-fAtoaNlBNpdxPZtOR4SaYHSf+wK8AI4EWyoX6cWop7Q='; style-src 'self' 'sha256-XXIxhGnoHNDsuA8o1ny1OVg6j5CsCqkCosrLmw21iXw='; img-src 'self' data: blob:; connect-src 'self' https://maincloud.spacetimedb.com wss://maincloud.spacetimedb.com https://auth.spacetimedb.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
 		<title>LDBG</title>
 		<!-- First, so its manifest downloads beside the engine: links the boot's
@@ -422,15 +422,15 @@ window.addEventListener('keydown', function (event) {
 		</script>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
-<script src="auth_config.js?v=c99e9044942b"></script><script src="spacetime_bridge.js?v=8b7f1689274e"></script>
+<script src="auth_config.js?v=c99e9044942b"></script><script src="spacetime_bridge.js?v=6d174390c514"></script>
 	</head>
 	<body>
 		<canvas id="canvas">
-			Your browser does not support the canvas tag.
+			Your browser doesn't support the canvas tag.
 		</canvas>
 
 		<noscript>
-			Your browser does not support JavaScript.
+			Your browser doesn't support JavaScript.
 		</noscript>
 
 		<div id="status">
@@ -452,7 +452,7 @@ window.addEventListener('keydown', function (event) {
 
 		<script src="index.js?v=6bb097973f5b"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index-362f93e0532d","mainPack":"index-d2428706fbc5.pck","experimentalVK":false,"fileSizes":{"index-ed692a0078ae.pck":40881968,"index-362f93e0532d.wasm":26346244,"index-d2428706fbc5.pck":38929332,"patch-8a6d11353f29.pck":4385532},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"ldbgPatch":"patch-8a6d11353f29.pck","ldbgFull":"index-ed692a0078ae.pck","ldbgBase":"872835deff90761889ecc5cfada7bbcdb1f69d6d/db79f57f4f95"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index-362f93e0532d","mainPack":"index-85d9e9081eb5.pck","experimentalVK":false,"fileSizes":{"index-85d9e9081eb5.pck":40877136,"index-362f93e0532d.wasm":26346244},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 // The base and the patch (docs/BROWSER_CLIENT.md, "The base and the patch"): a
