@@ -970,7 +970,10 @@ ${originalIndentation}`;
         roadsWalked: many("myRoadsWalked"),
         // The challenge skins earned (docs/BLOCK_SKINS_2.md): a record too,
         // written once by a settlement at most.
-        skinUnlocks: many("mySkinUnlocks")
+        skinUnlocks: many("mySkinUnlocks"),
+        // The Story regions cleared (story_region_clear, 2026-11-20): each opens
+        // its Endless region, so they ride with the records that open the rest.
+        storyRegionClears: many("myStoryRegionClears")
       }
     },
     // The Collection Log (docs/COLLECTION_LOG_PLAN.md): every item an enemy's kill
@@ -12366,6 +12369,7 @@ ${ty.variants.map(
   var MySkinUnlocks = t.object("MySkinUnlocks", {});
   var MySlimeBagKeep = t.object("MySlimeBagKeep", {});
   var MyStoreStatus = t.object("MyStoreStatus", {});
+  var MyStoryRegionClears = t.object("MyStoryRegionClears", {});
   var MyTaskChests = t.object("MyTaskChests", {});
   var MyTaskState = t.object("MyTaskState", {});
   var MyTasks = t.object("MyTasks", {});
@@ -12993,6 +12997,13 @@ ${ty.variants.map(
   var StoreTester = t.object("StoreTester", {
     owner: t.identity(),
     addedAt: t.timestamp()
+  });
+  var StoryRegionClear = t.object("StoryRegionClear", {
+    id: t.u64(),
+    owner: t.identity(),
+    dungeonId: t.string(),
+    regionId: t.string(),
+    clearedAt: t.timestamp()
   });
   var StoryRouteReset = t.object("StoryRouteReset", {
     id: t.string(),
@@ -14316,6 +14327,15 @@ ${ty.variants.map(
     monthlyCapCents: t.u32().name("monthly_cap_cents")
   });
 
+  // src/module_bindings/my_story_region_clears_table.ts
+  var my_story_region_clears_table_default = t.row({
+    id: t.u64().primaryKey(),
+    owner: t.identity(),
+    dungeonId: t.string().name("dungeon_id"),
+    regionId: t.string().name("region_id"),
+    clearedAt: t.timestamp().name("cleared_at")
+  });
+
   // src/module_bindings/my_task_chests_table.ts
   var my_task_chests_table_default = t.row({
     id: t.u64().primaryKey(),
@@ -15079,6 +15099,11 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_store_status_table_default),
+    myStoryRegionClears: table({
+      name: "my_story_region_clears",
+      indexes: [],
+      constraints: []
+    }, my_story_region_clears_table_default),
     myTaskChests: table({
       name: "my_task_chests",
       indexes: [],
@@ -15470,6 +15495,7 @@ ${ty.variants.map(
     "my_skin_unlocks": "mySkinUnlocks",
     "my_slime_bag_keep": "mySlimeBagKeep",
     "my_store_status": "myStoreStatus",
+    "my_story_region_clears": "myStoryRegionClears",
     "my_task_chests": "myTaskChests",
     "my_task_state": "myTaskState",
     "my_tasks": "myTasks",
