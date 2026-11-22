@@ -988,6 +988,31 @@ ${originalIndentation}`;
     // other player whose badges were looked up. A handful of rows, changed when a
     // goal is met, a badge is picked or a lookup answers, so they ride core.
     badges: { group: "core", keys: { badges: many("myBadges"), badgeLookup: one("myBadgeLookup") } },
+    // Ranked Farm (docs/RANKED_FARM_PLAN.md): the player's rating, whether they
+    // are searching, their queue cooldown, and the ladder's cutoffs every page
+    // reads a rank through. Core, because the hub plate shows the rank.
+    ranked: {
+      group: "core",
+      keys: {
+        rankedRating: one("myRankedRating"),
+        rankedQueue: one("myRankedQueue"),
+        rankedPenalty: one("myRankedPenalty"),
+        rankedCutoffs: one("rankedCutoffsView")
+      }
+    },
+    // The series this player is in (or their newest decided one) and its rounds:
+    // a domain of its own, so a round's score moving re-sends nothing else. Core,
+    // because a series is found while the player farms, by somebody else's search.
+    rankedSeries: {
+      group: "core",
+      keys: { rankedSeries: one("myRankedSeries"), rankedRounds: many("myRankedRounds") }
+    },
+    // The series' pot (R-3): each side's held materials, and what was paid at the
+    // verdict. Its own domain: a round's harvest landing re-sends nothing else.
+    rankedPot: { group: "core", keys: { rankedPot: many("myRankedPot") } },
+    // The seasons this player finished and what each paid (R-5): rare and tiny,
+    // and the season-reward moment is told from it wherever the player is.
+    rankedSeasonResults: { group: "core", keys: { rankedSeasonResults: many("myRankedSeasons") } },
     // A restricted account (docs/RESTRICTED_ACCOUNTS.md): the one row, or none.
     // Core, so every screen knows on its first frame what to grey out.
     restricted: { group: "core", keys: { restrictedAccount: one("myRestrictedAccount") } },
@@ -1073,6 +1098,27 @@ ${originalIndentation}`;
       group: "playerCounts",
       keys: { farmPlayerCounts: many("farmPlayerCounts"), darkPlayerCount: many("darkPlayerCount") }
     },
+    // Ranked Farm's pages (R-5): the ladder and the player's place on it, the
+    // stat card with each rank's marks, the match history, the seasons and the
+    // spinner's odds. Held, like the counters, only while the Farm's mode menu
+    // is open, and kept in Godot after it closes; split so a ladder refresh does
+    // not re-send the history.
+    rankedLadder: {
+      group: "playerCounts",
+      keys: { rankedLadder: many("rankedLadder"), rankedLadderPlace: one("myRankedLadderPlace") }
+    },
+    rankedRecords: {
+      group: "playerCounts",
+      keys: {
+        rankedHistory: many("myRankedHistory"),
+        rankedStats: one("myRankedStats"),
+        rankedRankStats: many("rankedRankStatsView")
+      }
+    },
+    rankedCatalog: {
+      group: "playerCounts",
+      keys: { rankedSeasons: many("rankedSeasons"), rankedOdds: many("rankedOdds") }
+    },
     // The Slime King's best waves, solo and co-op (rules version 52): anonymous,
     // tiny and shared, so it rides the counters' group.
     slimeBoard: { group: "playerCounts", keys: { slimeBestWaves: many("slimeBestWaves") } },
@@ -1118,6 +1164,13 @@ ${originalIndentation}`;
     duelOpponentBoard: { group: "darkDuel", keys: { duelOpponentBoard: many("myDuelOpponentBoard") } },
     // Their falling piece between board publishes (dark_duel_piece). Godot takes
     // whichever of the board and this was written last.
+    // WATCH (R-5, decision 25): friends' live ranked series and the room each is
+    // played in. With the friends, for the whole connection: a friend starting a
+    // match happens to the player.
+    rankedWatch: { group: "friends", keys: { rankedWatch: many("myWatchableFriendSeries") } },
+    // The watched room's boards, rebuilt from its event lanes (ranked_watch.ts):
+    // nothing observed, refreshed by the events themselves.
+    rankedWatchBoards: { group: "friends", observes: [], built: ["rankedWatchBoards"] },
     duelOpponentPiece: { group: "darkDuel", keys: { duelOpponentPiece: many("myDuelOpponentPiece") } },
     // Tasks and quests: the tasks this player holds, the chests they have turned
     // in and not yet seen, and where every quest stands. Always all of them, so
@@ -10334,6 +10387,9 @@ ${ty.variants.map(
     planJson: t.string()
   };
 
+  // src/module_bindings/forfeit_ranked_series_reducer.ts
+  var forfeit_ranked_series_reducer_default = {};
+
   // src/module_bindings/insure_duel_lobby_reducer.ts
   var insure_duel_lobby_reducer_default = {
     listingId: t.string(),
@@ -10381,6 +10437,9 @@ ${ty.variants.map(
     code: t.string()
   };
 
+  // src/module_bindings/join_ranked_queue_reducer.ts
+  var join_ranked_queue_reducer_default = {};
+
   // src/module_bindings/learn_skill_reducer.ts
   var learn_skill_reducer_default = {
     skillId: t.string()
@@ -10403,6 +10462,9 @@ ${ty.variants.map(
 
   // src/module_bindings/leave_party_queue_reducer.ts
   var leave_party_queue_reducer_default = {};
+
+  // src/module_bindings/leave_ranked_queue_reducer.ts
+  var leave_ranked_queue_reducer_default = {};
 
   // src/module_bindings/leave_restricted_account_reducer.ts
   var leave_restricted_account_reducer_default = {};
@@ -10500,6 +10562,14 @@ ${ty.variants.map(
     text: t.string(),
     severity: t.string(),
     minutes: t.u32()
+  };
+
+  // src/module_bindings/operator_ranked_season_end_reducer.ts
+  var operator_ranked_season_end_reducer_default = {};
+
+  // src/module_bindings/operator_ranked_season_start_reducer.ts
+  var operator_ranked_season_start_reducer_default = {
+    title: t.string()
   };
 
   // src/module_bindings/operator_regrade_enhancements_reducer.ts
@@ -12356,6 +12426,16 @@ ${ty.variants.map(
   var MyQuestClaims = t.object("MyQuestClaims", {});
   var MyQuestStats = t.object("MyQuestStats", {});
   var MyQuests = t.object("MyQuests", {});
+  var MyRankedHistory = t.object("MyRankedHistory", {});
+  var MyRankedLadderPlace = t.object("MyRankedLadderPlace", {});
+  var MyRankedPenalty = t.object("MyRankedPenalty", {});
+  var MyRankedPot = t.object("MyRankedPot", {});
+  var MyRankedQueue = t.object("MyRankedQueue", {});
+  var MyRankedRating = t.object("MyRankedRating", {});
+  var MyRankedRounds = t.object("MyRankedRounds", {});
+  var MyRankedSeasons = t.object("MyRankedSeasons", {});
+  var MyRankedSeries = t.object("MyRankedSeries", {});
+  var MyRankedStats = t.object("MyRankedStats", {});
   var MyRecentPlayers = t.object("MyRecentPlayers", {});
   var MyReplays = t.object("MyReplays", {});
   var MyRestrictedAccount = t.object("MyRestrictedAccount", {});
@@ -12376,6 +12456,7 @@ ${ty.variants.map(
   var MyTermsAcceptance = t.object("MyTermsAcceptance", {});
   var MyUpgradeProgress = t.object("MyUpgradeProgress", {});
   var MyUpgradeUnlocks = t.object("MyUpgradeUnlocks", {});
+  var MyWatchableFriendSeries = t.object("MyWatchableFriendSeries", {});
   var MyWatchedReplay = t.object("MyWatchedReplay", {});
   var MyWelcomeChest = t.object("MyWelcomeChest", {});
   var OpponentFarmBoardsCompactV4 = t.object("OpponentFarmBoardsCompactV4", {});
@@ -12814,6 +12895,247 @@ ${ty.variants.map(
     target: t.u32(),
     state: t.string()
   });
+  var RankedAttackLock = t.object("RankedAttackLock", {
+    attackId: t.string(),
+    recipient: t.identity(),
+    ordinal: t.u32(),
+    lockStamp: t.u32()
+  });
+  var RankedCutoffs = t.object("RankedCutoffs", {
+    id: t.u32(),
+    ratedCount: t.u32(),
+    cutoffsJson: t.string(),
+    refreshedAt: t.timestamp()
+  });
+  var RankedCutoffsView = t.object("RankedCutoffsView", {});
+  var RankedDailyPlayer = t.object("RankedDailyPlayer", {
+    key: t.string(),
+    owner: t.identity(),
+    day: t.u32()
+  });
+  var RankedHistory = t.object("RankedHistory", {
+    id: t.u64(),
+    owner: t.identity(),
+    season: t.u32(),
+    seriesId: t.string(),
+    opponentName: t.string(),
+    opponentDivision: t.i32(),
+    myWins: t.u32(),
+    theirWins: t.u32(),
+    won: t.bool(),
+    endedBy: t.string(),
+    placement: t.bool(),
+    unrated: t.bool(),
+    ratingBefore: t.f64(),
+    ratingAfter: t.f64(),
+    divisionBefore: t.i32(),
+    divisionAfter: t.i32(),
+    gradeBefore: t.u32(),
+    gradeAfter: t.u32(),
+    feePaid: t.u32(),
+    feeBack: t.u32(),
+    spin: t.u32(),
+    runIds: t.string(),
+    at: t.timestamp()
+  });
+  var RankedLadder = t.object("RankedLadder", {});
+  var RankedLadderPlace = t.object("RankedLadderPlace", {
+    owner: t.identity(),
+    position: t.u32(),
+    ratedCount: t.u32(),
+    refreshedAt: t.timestamp()
+  });
+  var RankedLadderRefresh = t.object("RankedLadderRefresh", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt()
+  });
+  var RankedLadderRow = t.object("RankedLadderRow", {
+    position: t.u32(),
+    name: t.string(),
+    division: t.i32(),
+    grade: t.u32(),
+    rating: t.u32(),
+    series: t.u32(),
+    wins: t.u32(),
+    restricted: t.bool()
+  });
+  var RankedLockCount = t.object("RankedLockCount", {
+    owner: t.identity(),
+    count: t.u32()
+  });
+  var RankedOdds = t.object("RankedOdds", {});
+  var RankedOddsRow = t.object("RankedOddsRow", {
+    rank: t.u32(),
+    fee: t.u32(),
+    outcome: t.u32(),
+    multiplier: t.u32(),
+    perMillion: t.u32()
+  });
+  var RankedPairDay = t.object("RankedPairDay", {
+    pairKey: t.string(),
+    day: t.u32(),
+    count: t.u32()
+  });
+  var RankedPenalty = t.object("RankedPenalty", {
+    owner: t.identity(),
+    strikes: t.u32(),
+    firstStrikeAt: t.timestamp(),
+    cooldownUntil: t.timestamp()
+  });
+  var RankedPotItem = t.object("RankedPotItem", {
+    potKey: t.string(),
+    seriesId: t.string(),
+    side: t.u32(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    paidSide: t.u32(),
+    paidQuantity: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var RankedQueue = t.object("RankedQueue", {
+    owner: t.identity(),
+    rating: t.f64(),
+    rd: t.f64(),
+    farmPower: t.u32(),
+    placement: t.bool(),
+    joinedAt: t.timestamp()
+  });
+  var RankedQueueSweep = t.object("RankedQueueSweep", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt()
+  });
+  var RankedRankStats = t.object("RankedRankStats", {
+    rank: t.u32(),
+    players: t.u32(),
+    speed: t.f64(),
+    attack: t.f64(),
+    defence: t.f64(),
+    efficiency: t.f64(),
+    clutch: t.f64()
+  });
+  var RankedRankStatsView = t.object("RankedRankStatsView", {});
+  var RankedRating = t.object("RankedRating", {
+    owner: t.identity(),
+    rating: t.f64(),
+    rd: t.f64(),
+    volatility: t.f64(),
+    season: t.u32(),
+    placementsLeft: t.u32(),
+    series: t.u32(),
+    wins: t.u32(),
+    streak: t.i32(),
+    seasonMaxDivision: t.i32(),
+    allTimeMaxDivision: t.i32(),
+    divisionSum: t.u32(),
+    divisionCount: t.u32(),
+    lastOpponent: t.string(),
+    lastPlayedAt: t.timestamp(),
+    decayDaysApplied: t.u32(),
+    rdDaysApplied: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var RankedRound = t.object("RankedRound", {
+    roundKey: t.string(),
+    seriesId: t.string(),
+    round: t.u32(),
+    winner: t.string(),
+    loser: t.string(),
+    how: t.string(),
+    decidedAt: t.timestamp(),
+    oneProof: t.string(),
+    twoProof: t.string(),
+    reversed: t.bool(),
+    oneRunId: t.string(),
+    twoRunId: t.string()
+  });
+  var RankedSeason = t.object("RankedSeason", {
+    season: t.u32(),
+    title: t.string(),
+    startedAt: t.timestamp(),
+    plannedEndAt: t.timestamp(),
+    ended: t.bool(),
+    endedAt: t.timestamp(),
+    rewardsJson: t.string()
+  });
+  var RankedSeasonResult = t.object("RankedSeasonResult", {
+    resultKey: t.string(),
+    owner: t.identity(),
+    season: t.u32(),
+    finalDivision: t.i32(),
+    peakDivision: t.i32(),
+    averageDivision: t.i32(),
+    rating: t.f64(),
+    series: t.u32(),
+    wins: t.u32(),
+    rewardRank: t.i32(),
+    rewardGold: t.u32(),
+    rewardItemsJson: t.string(),
+    rewardSkin: t.string(),
+    endedAt: t.timestamp()
+  });
+  var RankedSeasons = t.object("RankedSeasons", {});
+  var RankedSeries = t.object("RankedSeries", {
+    seriesId: t.string(),
+    matchId: t.string(),
+    playerOne: t.identity(),
+    playerTwo: t.identity(),
+    oneName: t.string(),
+    twoName: t.string(),
+    oneLevel: t.u32(),
+    twoLevel: t.u32(),
+    oneDivision: t.i32(),
+    twoDivision: t.i32(),
+    oneGrade: t.u32(),
+    twoGrade: t.u32(),
+    oneLook: t.string(),
+    twoLook: t.string(),
+    firstTo: t.u32(),
+    oneWins: t.u32(),
+    twoWins: t.u32(),
+    round: t.u32(),
+    state: t.string(),
+    stateAt: t.timestamp(),
+    foundUntil: t.timestamp(),
+    oneFee: t.u32(),
+    twoFee: t.u32(),
+    oneWinDelta: t.f64(),
+    oneLossDelta: t.f64(),
+    twoWinDelta: t.f64(),
+    twoLossDelta: t.f64(),
+    stakesNothing: t.bool(),
+    unrated: t.bool(),
+    winner: t.string(),
+    spin: t.u32(),
+    spinRank: t.u32(),
+    feeToWinner: t.u32(),
+    feeBurned: t.u32(),
+    feeReturned: t.u32(),
+    suddenDeathRows: t.u32(),
+    oneAfk: t.u32(),
+    twoAfk: t.u32(),
+    oneAwayMicros: t.u64(),
+    twoAwayMicros: t.u64(),
+    endedBy: t.string(),
+    createdAt: t.timestamp()
+  });
+  var RankedSeriesTick = t.object("RankedSeriesTick", {
+    scheduledId: t.u64(),
+    scheduledAt: t.scheduleAt(),
+    seriesId: t.string()
+  });
+  var RankedStats = t.object("RankedStats", {
+    statsKey: t.string(),
+    owner: t.identity(),
+    season: t.u32(),
+    rounds: t.u32(),
+    roundsWon: t.u32(),
+    pieces: t.u32(),
+    seconds: t.f64(),
+    attack: t.u32(),
+    received: t.u32(),
+    cancelled: t.u32(),
+    clutchWins: t.u32()
+  });
   var RecentPlayer = t.object("RecentPlayer", {
     id: t.u64(),
     owner: t.identity(),
@@ -13056,6 +13378,22 @@ ${ty.variants.map(
     upgradeId: t.string(),
     rank: t.u32(),
     pointCost: t.u32()
+  });
+  var WatchableSeriesRow = t.object("WatchableSeriesRow", {
+    friendId: t.u64(),
+    friendName: t.string(),
+    roomKey: t.u32(),
+    state: t.string(),
+    round: t.u32(),
+    firstTo: t.u32(),
+    oneName: t.string(),
+    twoName: t.string(),
+    oneSlot: t.i32(),
+    twoSlot: t.i32(),
+    oneWins: t.u32(),
+    twoWins: t.u32(),
+    oneDivision: t.i32(),
+    twoDivision: t.i32()
   });
   var WelcomeChestClaim = t.object("WelcomeChestClaim", {
     owner: t.identity(),
@@ -14200,6 +14538,188 @@ ${ty.variants.map(
     state: t.string()
   });
 
+  // src/module_bindings/my_ranked_history_table.ts
+  var my_ranked_history_table_default = t.row({
+    id: t.u64().primaryKey(),
+    owner: t.identity(),
+    season: t.u32(),
+    seriesId: t.string().name("series_id"),
+    opponentName: t.string().name("opponent_name"),
+    opponentDivision: t.i32().name("opponent_division"),
+    myWins: t.u32().name("my_wins"),
+    theirWins: t.u32().name("their_wins"),
+    won: t.bool(),
+    endedBy: t.string().name("ended_by"),
+    placement: t.bool(),
+    unrated: t.bool(),
+    ratingBefore: t.f64().name("rating_before"),
+    ratingAfter: t.f64().name("rating_after"),
+    divisionBefore: t.i32().name("division_before"),
+    divisionAfter: t.i32().name("division_after"),
+    gradeBefore: t.u32().name("grade_before"),
+    gradeAfter: t.u32().name("grade_after"),
+    feePaid: t.u32().name("fee_paid"),
+    feeBack: t.u32().name("fee_back"),
+    spin: t.u32(),
+    runIds: t.string().name("run_ids"),
+    at: t.timestamp()
+  });
+
+  // src/module_bindings/my_ranked_ladder_place_table.ts
+  var my_ranked_ladder_place_table_default = t.row({
+    owner: t.identity().primaryKey(),
+    position: t.u32(),
+    ratedCount: t.u32().name("rated_count"),
+    refreshedAt: t.timestamp().name("refreshed_at")
+  });
+
+  // src/module_bindings/my_ranked_penalty_table.ts
+  var my_ranked_penalty_table_default = t.row({
+    owner: t.identity().primaryKey(),
+    strikes: t.u32(),
+    firstStrikeAt: t.timestamp().name("first_strike_at"),
+    cooldownUntil: t.timestamp().name("cooldown_until")
+  });
+
+  // src/module_bindings/my_ranked_pot_table.ts
+  var my_ranked_pot_table_default = t.row({
+    potKey: t.string().primaryKey().name("pot_key"),
+    seriesId: t.string().name("series_id"),
+    side: t.u32(),
+    itemId: t.string().name("item_id"),
+    quantity: t.u32(),
+    paidSide: t.u32().name("paid_side"),
+    paidQuantity: t.u32().name("paid_quantity"),
+    createdAt: t.timestamp().name("created_at")
+  });
+
+  // src/module_bindings/my_ranked_queue_table.ts
+  var my_ranked_queue_table_default = t.row({
+    owner: t.identity().primaryKey(),
+    rating: t.f64(),
+    rd: t.f64(),
+    farmPower: t.u32().name("farm_power"),
+    placement: t.bool(),
+    joinedAt: t.timestamp().name("joined_at")
+  });
+
+  // src/module_bindings/my_ranked_rating_table.ts
+  var my_ranked_rating_table_default = t.row({
+    owner: t.identity().primaryKey(),
+    rating: t.f64(),
+    rd: t.f64(),
+    volatility: t.f64(),
+    season: t.u32(),
+    placementsLeft: t.u32().name("placements_left"),
+    series: t.u32(),
+    wins: t.u32(),
+    streak: t.i32(),
+    seasonMaxDivision: t.i32().name("season_max_division"),
+    allTimeMaxDivision: t.i32().name("all_time_max_division"),
+    divisionSum: t.u32().name("division_sum"),
+    divisionCount: t.u32().name("division_count"),
+    lastOpponent: t.string().name("last_opponent"),
+    lastPlayedAt: t.timestamp().name("last_played_at"),
+    decayDaysApplied: t.u32().name("decay_days_applied"),
+    rdDaysApplied: t.u32().name("rd_days_applied"),
+    createdAt: t.timestamp().name("created_at")
+  });
+
+  // src/module_bindings/my_ranked_rounds_table.ts
+  var my_ranked_rounds_table_default = t.row({
+    roundKey: t.string().primaryKey().name("round_key"),
+    seriesId: t.string().name("series_id"),
+    round: t.u32(),
+    winner: t.string(),
+    loser: t.string(),
+    how: t.string(),
+    decidedAt: t.timestamp().name("decided_at"),
+    oneProof: t.string().name("one_proof"),
+    twoProof: t.string().name("two_proof"),
+    reversed: t.bool(),
+    oneRunId: t.string().name("one_run_id"),
+    twoRunId: t.string().name("two_run_id")
+  });
+
+  // src/module_bindings/my_ranked_seasons_table.ts
+  var my_ranked_seasons_table_default = t.row({
+    resultKey: t.string().primaryKey().name("result_key"),
+    owner: t.identity(),
+    season: t.u32(),
+    finalDivision: t.i32().name("final_division"),
+    peakDivision: t.i32().name("peak_division"),
+    averageDivision: t.i32().name("average_division"),
+    rating: t.f64(),
+    series: t.u32(),
+    wins: t.u32(),
+    rewardRank: t.i32().name("reward_rank"),
+    rewardGold: t.u32().name("reward_gold"),
+    rewardItemsJson: t.string().name("reward_items_json"),
+    rewardSkin: t.string().name("reward_skin"),
+    endedAt: t.timestamp().name("ended_at")
+  });
+
+  // src/module_bindings/my_ranked_series_table.ts
+  var my_ranked_series_table_default = t.row({
+    seriesId: t.string().primaryKey().name("series_id"),
+    matchId: t.string().name("match_id"),
+    playerOne: t.identity().name("player_one"),
+    playerTwo: t.identity().name("player_two"),
+    oneName: t.string().name("one_name"),
+    twoName: t.string().name("two_name"),
+    oneLevel: t.u32().name("one_level"),
+    twoLevel: t.u32().name("two_level"),
+    oneDivision: t.i32().name("one_division"),
+    twoDivision: t.i32().name("two_division"),
+    oneGrade: t.u32().name("one_grade"),
+    twoGrade: t.u32().name("two_grade"),
+    oneLook: t.string().name("one_look"),
+    twoLook: t.string().name("two_look"),
+    firstTo: t.u32().name("first_to"),
+    oneWins: t.u32().name("one_wins"),
+    twoWins: t.u32().name("two_wins"),
+    round: t.u32(),
+    state: t.string(),
+    stateAt: t.timestamp().name("state_at"),
+    foundUntil: t.timestamp().name("found_until"),
+    oneFee: t.u32().name("one_fee"),
+    twoFee: t.u32().name("two_fee"),
+    oneWinDelta: t.f64().name("one_win_delta"),
+    oneLossDelta: t.f64().name("one_loss_delta"),
+    twoWinDelta: t.f64().name("two_win_delta"),
+    twoLossDelta: t.f64().name("two_loss_delta"),
+    stakesNothing: t.bool().name("stakes_nothing"),
+    unrated: t.bool(),
+    winner: t.string(),
+    spin: t.u32(),
+    spinRank: t.u32().name("spin_rank"),
+    feeToWinner: t.u32().name("fee_to_winner"),
+    feeBurned: t.u32().name("fee_burned"),
+    feeReturned: t.u32().name("fee_returned"),
+    suddenDeathRows: t.u32().name("sudden_death_rows"),
+    oneAfk: t.u32().name("one_afk"),
+    twoAfk: t.u32().name("two_afk"),
+    oneAwayMicros: t.u64().name("one_away_micros"),
+    twoAwayMicros: t.u64().name("two_away_micros"),
+    endedBy: t.string().name("ended_by"),
+    createdAt: t.timestamp().name("created_at")
+  });
+
+  // src/module_bindings/my_ranked_stats_table.ts
+  var my_ranked_stats_table_default = t.row({
+    statsKey: t.string().primaryKey().name("stats_key"),
+    owner: t.identity(),
+    season: t.u32(),
+    rounds: t.u32(),
+    roundsWon: t.u32().name("rounds_won"),
+    pieces: t.u32(),
+    seconds: t.f64(),
+    attack: t.u32(),
+    received: t.u32(),
+    cancelled: t.u32(),
+    clutchWins: t.u32().name("clutch_wins")
+  });
+
   // src/module_bindings/my_recent_players_table.ts
   var my_recent_players_table_default = t.row({
     recentId: t.u64().name("recent_id"),
@@ -14403,6 +14923,24 @@ ${ty.variants.map(
     pointCost: t.u32().name("point_cost")
   });
 
+  // src/module_bindings/my_watchable_friend_series_table.ts
+  var my_watchable_friend_series_table_default = t.row({
+    friendId: t.u64().name("friend_id"),
+    friendName: t.string().name("friend_name"),
+    roomKey: t.u32().name("room_key"),
+    state: t.string(),
+    round: t.u32(),
+    firstTo: t.u32().name("first_to"),
+    oneName: t.string().name("one_name"),
+    twoName: t.string().name("two_name"),
+    oneSlot: t.i32().name("one_slot"),
+    twoSlot: t.i32().name("two_slot"),
+    oneWins: t.u32().name("one_wins"),
+    twoWins: t.u32().name("two_wins"),
+    oneDivision: t.i32().name("one_division"),
+    twoDivision: t.i32().name("two_division")
+  });
+
   // src/module_bindings/my_watched_replay_table.ts
   var my_watched_replay_table_default = t.row({
     replayId: t.u64().primaryKey().name("replay_id"),
@@ -14531,6 +15069,57 @@ ${ty.variants.map(
     kind: t.string(),
     id: t.string(),
     detailJson: t.string().name("detail_json")
+  });
+
+  // src/module_bindings/ranked_cutoffs_view_table.ts
+  var ranked_cutoffs_view_table_default = t.row({
+    id: t.u32().primaryKey(),
+    ratedCount: t.u32().name("rated_count"),
+    cutoffsJson: t.string().name("cutoffs_json"),
+    refreshedAt: t.timestamp().name("refreshed_at")
+  });
+
+  // src/module_bindings/ranked_ladder_table.ts
+  var ranked_ladder_table_default = t.row({
+    position: t.u32().primaryKey(),
+    name: t.string(),
+    division: t.i32(),
+    grade: t.u32(),
+    rating: t.u32(),
+    series: t.u32(),
+    wins: t.u32(),
+    restricted: t.bool()
+  });
+
+  // src/module_bindings/ranked_odds_table.ts
+  var ranked_odds_table_default = t.row({
+    rank: t.u32(),
+    fee: t.u32(),
+    outcome: t.u32(),
+    multiplier: t.u32(),
+    perMillion: t.u32().name("per_million")
+  });
+
+  // src/module_bindings/ranked_rank_stats_view_table.ts
+  var ranked_rank_stats_view_table_default = t.row({
+    rank: t.u32().primaryKey(),
+    players: t.u32(),
+    speed: t.f64(),
+    attack: t.f64(),
+    defence: t.f64(),
+    efficiency: t.f64(),
+    clutch: t.f64()
+  });
+
+  // src/module_bindings/ranked_seasons_table.ts
+  var ranked_seasons_table_default = t.row({
+    season: t.u32().primaryKey(),
+    title: t.string(),
+    startedAt: t.timestamp().name("started_at"),
+    plannedEndAt: t.timestamp().name("planned_end_at"),
+    ended: t.bool(),
+    endedAt: t.timestamp().name("ended_at"),
+    rewardsJson: t.string().name("rewards_json")
   });
 
   // src/module_bindings/server_notices_table.ts
@@ -15034,6 +15623,56 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_quests_table_default),
+    myRankedHistory: table({
+      name: "my_ranked_history",
+      indexes: [],
+      constraints: []
+    }, my_ranked_history_table_default),
+    myRankedLadderPlace: table({
+      name: "my_ranked_ladder_place",
+      indexes: [],
+      constraints: []
+    }, my_ranked_ladder_place_table_default),
+    myRankedPenalty: table({
+      name: "my_ranked_penalty",
+      indexes: [],
+      constraints: []
+    }, my_ranked_penalty_table_default),
+    myRankedPot: table({
+      name: "my_ranked_pot",
+      indexes: [],
+      constraints: []
+    }, my_ranked_pot_table_default),
+    myRankedQueue: table({
+      name: "my_ranked_queue",
+      indexes: [],
+      constraints: []
+    }, my_ranked_queue_table_default),
+    myRankedRating: table({
+      name: "my_ranked_rating",
+      indexes: [],
+      constraints: []
+    }, my_ranked_rating_table_default),
+    myRankedRounds: table({
+      name: "my_ranked_rounds",
+      indexes: [],
+      constraints: []
+    }, my_ranked_rounds_table_default),
+    myRankedSeasons: table({
+      name: "my_ranked_seasons",
+      indexes: [],
+      constraints: []
+    }, my_ranked_seasons_table_default),
+    myRankedSeries: table({
+      name: "my_ranked_series",
+      indexes: [],
+      constraints: []
+    }, my_ranked_series_table_default),
+    myRankedStats: table({
+      name: "my_ranked_stats",
+      indexes: [],
+      constraints: []
+    }, my_ranked_stats_table_default),
     myRecentPlayers: table({
       name: "my_recent_players",
       indexes: [],
@@ -15134,6 +15773,11 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_upgrade_unlocks_table_default),
+    myWatchableFriendSeries: table({
+      name: "my_watchable_friend_series",
+      indexes: [],
+      constraints: []
+    }, my_watchable_friend_series_table_default),
     myWatchedReplay: table({
       name: "my_watched_replay",
       indexes: [],
@@ -15179,6 +15823,31 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, quest_details_table_default),
+    rankedCutoffsView: table({
+      name: "ranked_cutoffs_view",
+      indexes: [],
+      constraints: []
+    }, ranked_cutoffs_view_table_default),
+    rankedLadder: table({
+      name: "ranked_ladder",
+      indexes: [],
+      constraints: []
+    }, ranked_ladder_table_default),
+    rankedOdds: table({
+      name: "ranked_odds",
+      indexes: [],
+      constraints: []
+    }, ranked_odds_table_default),
+    rankedRankStatsView: table({
+      name: "ranked_rank_stats_view",
+      indexes: [],
+      constraints: []
+    }, ranked_rank_stats_view_table_default),
+    rankedSeasons: table({
+      name: "ranked_seasons",
+      indexes: [],
+      constraints: []
+    }, ranked_seasons_table_default),
     serverNotices: table({
       name: "server_notices",
       indexes: [],
@@ -15250,6 +15919,7 @@ ${ty.variants.map(
     reducerSchema("equip_inventory_item", equip_inventory_item_reducer_default),
     reducerSchema("equip_inventory_item_to_slot", equip_inventory_item_to_slot_reducer_default),
     reducerSchema("equip_loadout", equip_loadout_reducer_default),
+    reducerSchema("forfeit_ranked_series", forfeit_ranked_series_reducer_default),
     reducerSchema("insure_duel_lobby", insure_duel_lobby_reducer_default),
     reducerSchema("invite_friend", invite_friend_reducer_default),
     reducerSchema("join_farm_dark_private", join_farm_dark_private_reducer_default),
@@ -15260,12 +15930,14 @@ ${ty.variants.map(
     reducerSchema("join_party_invite", join_party_invite_reducer_default),
     reducerSchema("join_party_queue", join_party_queue_reducer_default),
     reducerSchema("join_party_room", join_party_room_reducer_default),
+    reducerSchema("join_ranked_queue", join_ranked_queue_reducer_default),
     reducerSchema("learn_skill", learn_skill_reducer_default),
     reducerSchema("leave_dark_run", leave_dark_run_reducer_default),
     reducerSchema("leave_duel_listing", leave_duel_listing_reducer_default),
     reducerSchema("leave_farm_match", leave_farm_match_reducer_default),
     reducerSchema("leave_party", leave_party_reducer_default),
     reducerSchema("leave_party_queue", leave_party_queue_reducer_default),
+    reducerSchema("leave_ranked_queue", leave_ranked_queue_reducer_default),
     reducerSchema("leave_restricted_account", leave_restricted_account_reducer_default),
     reducerSchema("look_up_badges", look_up_badges_reducer_default),
     reducerSchema("mark_tasks_seen", mark_tasks_seen_reducer_default),
@@ -15284,6 +15956,8 @@ ${ty.variants.map(
     reducerSchema("operator_lift_purchase_hold", operator_lift_purchase_hold_reducer_default),
     reducerSchema("operator_lift_suspension", operator_lift_suspension_reducer_default),
     reducerSchema("operator_post_notice", operator_post_notice_reducer_default),
+    reducerSchema("operator_ranked_season_end", operator_ranked_season_end_reducer_default),
+    reducerSchema("operator_ranked_season_start", operator_ranked_season_start_reducer_default),
     reducerSchema("operator_regrade_enhancements", operator_regrade_enhancements_reducer_default),
     reducerSchema("operator_rename_player", operator_rename_player_reducer_default),
     reducerSchema("operator_resettle_refused_run", operator_resettle_refused_run_reducer_default),
@@ -15482,6 +16156,16 @@ ${ty.variants.map(
     "my_quest_claims": "myQuestClaims",
     "my_quest_stats": "myQuestStats",
     "my_quests": "myQuests",
+    "my_ranked_history": "myRankedHistory",
+    "my_ranked_ladder_place": "myRankedLadderPlace",
+    "my_ranked_penalty": "myRankedPenalty",
+    "my_ranked_pot": "myRankedPot",
+    "my_ranked_queue": "myRankedQueue",
+    "my_ranked_rating": "myRankedRating",
+    "my_ranked_rounds": "myRankedRounds",
+    "my_ranked_seasons": "myRankedSeasons",
+    "my_ranked_series": "myRankedSeries",
+    "my_ranked_stats": "myRankedStats",
     "my_recent_players": "myRecentPlayers",
     "my_replays": "myReplays",
     "my_restricted_account": "myRestrictedAccount",
@@ -15502,6 +16186,7 @@ ${ty.variants.map(
     "my_terms_acceptance": "myTermsAcceptance",
     "my_upgrade_progress": "myUpgradeProgress",
     "my_upgrade_unlocks": "myUpgradeUnlocks",
+    "my_watchable_friend_series": "myWatchableFriendSeries",
     "my_watched_replay": "myWatchedReplay",
     "my_welcome_chest": "myWelcomeChest",
     "opponent_farm_boards_compact_v4": "opponentFarmBoardsCompactV4",
@@ -15511,6 +16196,11 @@ ${ty.variants.map(
     "opponent_farm_roster_v2": "opponentFarmRosterV2",
     "quest_catalog": "questCatalog",
     "quest_details": "questDetails",
+    "ranked_cutoffs_view": "rankedCutoffsView",
+    "ranked_ladder": "rankedLadder",
+    "ranked_odds": "rankedOdds",
+    "ranked_rank_stats_view": "rankedRankStatsView",
+    "ranked_seasons": "rankedSeasons",
     "server_notices": "serverNotices",
     "slime_best_waves": "slimeBestWaves",
     "store_offers": "storeOffers"
@@ -16273,6 +16963,66 @@ ${ty.variants.map(
     };
   }
 
+  // src/ranked_watch.ts
+  var watchedBoards = new FarmRivalBoards();
+  var watchHandle = null;
+  var handlersOn = /* @__PURE__ */ new WeakSet();
+  function wireHandlers(activeConnection) {
+    if (handlersOn.has(activeConnection)) return;
+    handlersOn.add(activeConnection);
+    const db = activeConnection.db;
+    db.farmLockEvent.onInsert((_ctx, row) => {
+      if (watchedBoards.applyLock(row) === "applied") scheduleDomain(activeConnection, "rankedWatchBoards");
+    });
+    db.farmBoardEvent.onInsert((_ctx, row) => {
+      if (watchedBoards.applyBoard(row)) scheduleDomain(activeConnection, "rankedWatchBoards");
+    });
+  }
+  function stopWatching() {
+    if (watchHandle && typeof watchHandle.unsubscribe === "function") {
+      try {
+        watchHandle.unsubscribe();
+      } catch {
+      }
+    }
+    watchHandle = null;
+  }
+  function watchRankedRoom(room) {
+    const activeConnection = live.connection;
+    const key = Number.isFinite(room) ? Math.trunc(room) : -1;
+    if (key === watchedBoards.room && (watchHandle || key < 0)) return;
+    stopWatching();
+    watchedBoards.follow(key);
+    if (!activeConnection) return;
+    scheduleDomain(activeConnection, "rankedWatchBoards");
+    if (key < 0 || live.connection !== activeConnection || !groupSubscribed("friends")) return;
+    wireHandlers(activeConnection);
+    watchHandle = activeConnection.subscriptionBuilder().onError((_ctx, error) => {
+      if (live.connection === activeConnection) emit({ type: "error", command: "watchRankedRoom", message: String(error) });
+    }).subscribe([
+      `SELECT * FROM farm_lock_event WHERE room = ${key}`,
+      `SELECT * FROM farm_board_event WHERE room = ${key}`
+    ]);
+  }
+  function releaseWatchHandles() {
+    watchHandle = null;
+    watchedBoards.clear();
+  }
+  function watchedBoardRows() {
+    const out = [];
+    for (const [slot, board] of watchedBoards.boards) {
+      out.push({
+        room: watchedBoards.room,
+        slot,
+        cells: board.cells,
+        score: board.score,
+        linesCleared: board.linesCleared,
+        toppedOut: board.toppedOut
+      });
+    }
+    return out;
+  }
+
   // src/party_partner_boards.ts
   function identityHex(value) {
     const hex = value?.toHexString;
@@ -16472,6 +17222,7 @@ ${ty.variants.map(
     scopedHandles.clear();
     releaseFarmRoomHandles();
     releasePartyRoomHandles();
+    releaseWatchHandles();
   }
   function adoptScopedSubscriptions(activeConnection) {
     if (scopedSubscriptionConnection === activeConnection) return;
@@ -16528,6 +17279,8 @@ ${ty.variants.map(
     // Refreshed by nothing since the room stopped sharing pieces in flight
     // (docs/BACKEND_COST_AUDIT_3.md); kept so the wire contract and Godot's
     // handling of it are unchanged. The roster it reads is observed for farmBoard.
+    // WATCH: the boards of the friend's room being watched (ranked_watch.ts).
+    rankedWatchBoards: () => ({ rankedWatchBoards: watchedBoardRows() }),
     farmPiece: (activeConnection) => {
       const { pieces } = farmRivals.opponentRows(rows(activeConnection.db.opponentFarmRosterV2));
       return { farmOpponentPieces: pieces, opponentFarmPiece: pieces[0] ?? null };
@@ -19554,6 +20307,7 @@ ${ty.variants.map(
     diagnosticsBeat,
     diagnosticsBootBeat,
     takeProblemReports,
-    diagnosticsLogTail
+    diagnosticsLogTail,
+    watchRankedRoom
   };
 })();
