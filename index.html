@@ -2,14 +2,14 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8">
-		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-K1fbeScte1mEWv44+1tRVo/b/mdV2EHpZLMU/45aBf4=' 'sha256-/iCpl8ITmahiHMPWnImQi334xjsAcmG44G/kOohOskw=' 'sha256-M2Jo+1Vlgy5K9gpIxmzYf2VagZw+Pbz2ELGdIdR4qrM=' 'sha256-o52GNZ8WeQ++dFIOGRuvHSqQi58PQQCtBu73/nvKmyo='; style-src 'self' 'sha256-XXIxhGnoHNDsuA8o1ny1OVg6j5CsCqkCosrLmw21iXw='; img-src 'self' data: blob:; connect-src 'self' https://maincloud.spacetimedb.com wss://maincloud.spacetimedb.com https://auth.spacetimedb.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-K1fbeScte1mEWv44+1tRVo/b/mdV2EHpZLMU/45aBf4=' 'sha256-/iCpl8ITmahiHMPWnImQi334xjsAcmG44G/kOohOskw=' 'sha256-M2Jo+1Vlgy5K9gpIxmzYf2VagZw+Pbz2ELGdIdR4qrM=' 'sha256-AmVf9R7i2OoC+7HLZNXspwg50pFU2wiT6YZf6SBgQM4='; style-src 'self' 'sha256-XXIxhGnoHNDsuA8o1ny1OVg6j5CsCqkCosrLmw21iXw='; img-src 'self' data: blob:; connect-src 'self' https://maincloud.spacetimedb.com wss://maincloud.spacetimedb.com https://auth.spacetimedb.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
 		<title>LDBG</title>
 		<!-- First, so its manifest downloads beside the engine: links the boot's
 		shader programs off the main thread while the game downloads (web/prelink.js).
 		The deploy names the manifest (tools/web_publish/fingerprint.mjs); a
 		local export has none and the script does nothing. -->
-		<script src="prelink.js?v=a3aabeaaa0f1" data-manifest="prelink-23f6a6848ca0.json" async></script>
+		<script src="prelink.js?v=a3aabeaaa0f1" data-manifest="prelink-b076f660fc48.json" async></script>
 		<!--
 		LDBG's browser shell: Godot's default web shell with its loading overlay
 		replaced by the game's own -- the wordmark, with the five main-menu icons
@@ -452,7 +452,7 @@ window.addEventListener('keydown', function (event) {
 
 		<script src="index.js?v=6bb097973f5b"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index-362f93e0532d","mainPack":"index-4335df548250.pck","experimentalVK":false,"fileSizes":{"index-e05b7e6d304d.pck":41704544,"index-362f93e0532d.wasm":26346244,"index-4335df548250.pck":40904076,"patch-8af816b8d0ae.pck":2267200},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"ldbgPatch":"patch-8af816b8d0ae.pck","ldbgFull":"index-e05b7e6d304d.pck","ldbgBase":"adc8995394978f561e6c444aba5673217a5c7ebf/7f1df1e8c141"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index-362f93e0532d","mainPack":"index-4335df548250.pck","experimentalVK":false,"fileSizes":{"index-6d72ca4fc7c7.pck":41791740,"index-362f93e0532d.wasm":26346244,"index-4335df548250.pck":40904076,"patch-3470a2fa12d8.pck":2552920},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"ldbgPatch":"patch-3470a2fa12d8.pck","ldbgFull":"index-6d72ca4fc7c7.pck","ldbgBase":"adc8995394978f561e6c444aba5673217a5c7ebf/7f1df1e8c141"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 // The base and the patch (docs/BROWSER_CLIENT.md, "The base and the patch"): a
