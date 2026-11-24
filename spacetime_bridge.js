@@ -1373,6 +1373,36 @@ ${originalIndentation}`;
   }
   var MAX_PENDING_CALLS = 64;
   var HELD_CALL_TIMEOUT_MS = 2e4;
+  function routeReducerCall(state) {
+    if (state.ready) return "send";
+    if (!state.background && state.account && state.resuming) return "hold";
+    return "refuse";
+  }
+  var CallLedger = class {
+    #inFlight = /* @__PURE__ */ new Map();
+    sent(name) {
+      this.#inFlight.set(name, (this.#inFlight.get(name) ?? 0) + 1);
+    }
+    answered(name) {
+      const left = (this.#inFlight.get(name) ?? 0) - 1;
+      if (left > 0) this.#inFlight.set(name, left);
+      else this.#inFlight.delete(name);
+    }
+    inFlight(name) {
+      return (this.#inFlight.get(name) ?? 0) > 0;
+    }
+    names() {
+      return [...this.#inFlight.keys()];
+    }
+  };
+  function isCallPendingIn(name, held, ledger) {
+    return ledger.inFlight(name) || held.some((call) => call.name === name);
+  }
+  var CALL_LOST_MESSAGE = "The connection dropped before the server answered. Check whether it went through, then try again.";
+  function callFailureMessage(error) {
+    if (error instanceof Error && error.name === "UnknownCallResultError") return CALL_LOST_MESSAGE;
+    return String(error);
+  }
   function partitionExpiredCalls(queued, now, timeoutMs = HELD_CALL_TIMEOUT_MS) {
     const kept = [];
     const expired = [];
@@ -16281,6 +16311,10 @@ ${ty.variants.map(
   // src/reducer_queue.ts
   var pendingReducerCalls = [];
   var pendingCallTimer = null;
+  var sentReducerCalls = new CallLedger();
+  function isCallPending(name) {
+    return isCallPendingIn(name, pendingReducerCalls, sentReducerCalls);
+  }
   function flushPendingReducerCalls() {
     if (!live.connection || !live.coreSubscriptionReady) return;
     clearPendingCallTimer();
@@ -16318,8 +16352,14 @@ ${ty.variants.map(
     try {
       const background = isBackgroundCall(name);
       if (!background) noteUserActivity();
-      if (!live.connection || !live.coreSubscriptionReady) {
-        if (!background && currentAuthMode() === "account" && live.lastBackendRequest && (live.resumeNeeded || live.connectionOpening)) {
+      const route = routeReducerCall({
+        ready: Boolean(live.connection) && live.coreSubscriptionReady,
+        background,
+        account: currentAuthMode() === "account" && Boolean(live.lastBackendRequest),
+        resuming: live.resumeNeeded || live.connectionOpening
+      });
+      if (route !== "send") {
+        if (route === "hold") {
           pendingReducerCalls.push({ name, argumentsJson, queuedAt: Date.now() });
           const collapsed = collapsePendingCalls(pendingReducerCalls);
           pendingReducerCalls.length = 0;
@@ -16335,7 +16375,13 @@ ${ty.variants.map(
       const connection = live.connection;
       const softRefusal = isSoftRefusalCall(name);
       const before = softRefusal ? refusalMarkOf(cachedRefusal(connection)) : null;
-      await reducer.call(connection.reducers, JSON.parse(argumentsJson));
+      const args = JSON.parse(argumentsJson);
+      sentReducerCalls.sent(name);
+      try {
+        await reducer.call(connection.reducers, args);
+      } finally {
+        sentReducerCalls.answered(name);
+      }
       if (softRefusal) {
         const reason = refusalOfCall(callRunId(argumentsJson), before, cachedRefusal(connection));
         if (reason !== null) {
@@ -16345,7 +16391,7 @@ ${ty.variants.map(
       }
       if (reportsSuccess(name)) emit({ type: "command_succeeded", command: name });
     } catch (error) {
-      emit({ type: "error", command: name, message: String(error) });
+      emit({ type: "error", command: name, message: callFailureMessage(error) });
     }
   }
 
@@ -17776,6 +17822,7 @@ ${ty.variants.map(
       resumeNeeded: live.resumeNeeded,
       screen: live.clientScreen,
       held: pendingReducerCalls.map((call) => call.name),
+      inFlight: sentReducerCalls.names(),
       dirty: dirtyDomainNames(),
       counts
     });
@@ -20299,6 +20346,7 @@ ${ty.variants.map(
     setClientContext,
     noteUserActivity,
     callReducer,
+    isCallPending,
     beginCheckout,
     getAuthStatus,
     snapshotDiagnostics,
