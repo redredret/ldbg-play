@@ -1379,17 +1379,25 @@ ${originalIndentation}`;
     return "refuse";
   }
   var CallLedger = class {
+    // When each unanswered call to a name was sent, oldest first.
     #inFlight = /* @__PURE__ */ new Map();
-    sent(name) {
-      this.#inFlight.set(name, (this.#inFlight.get(name) ?? 0) + 1);
+    sent(name, at = Date.now()) {
+      const times = this.#inFlight.get(name) ?? [];
+      times.push(at);
+      this.#inFlight.set(name, times);
     }
     answered(name) {
-      const left = (this.#inFlight.get(name) ?? 0) - 1;
-      if (left > 0) this.#inFlight.set(name, left);
-      else this.#inFlight.delete(name);
+      const times = this.#inFlight.get(name);
+      if (!times) return;
+      times.shift();
+      if (times.length === 0) this.#inFlight.delete(name);
     }
     inFlight(name) {
-      return (this.#inFlight.get(name) ?? 0) > 0;
+      return (this.#inFlight.get(name)?.length ?? 0) > 0;
+    }
+    /** When the oldest unanswered call to `name` was sent, or null for none. */
+    sentAt(name) {
+      return this.#inFlight.get(name)?.[0] ?? null;
     }
     names() {
       return [...this.#inFlight.keys()];
@@ -1490,6 +1498,36 @@ ${originalIndentation}`;
       report(domain, String(error));
     }
   }
+  var SLOW_CALL_STAGES = ["still_saving", "gave_up", "no_answer", "held_expired"];
+  function isSlowCallStage(stage) {
+    return SLOW_CALL_STAGES.includes(stage);
+  }
+  function ageOf(now, at) {
+    return typeof at === "number" && at > 0 ? Math.max(0, now - at) : null;
+  }
+  function slowCallDetails(state) {
+    const { name, now, held, ledger, connection, timings } = state;
+    const heldCall = held.find((call) => call.name === name);
+    const resumeMs = timings.readyAt >= timings.openStartedAt && timings.openStartedAt > 0 ? timings.readyAt - timings.openStartedAt : null;
+    return {
+      call: name,
+      held: Boolean(heldCall),
+      heldForMs: heldCall ? ageOf(now, heldCall.queuedAt) : null,
+      inFlight: ledger.inFlight(name),
+      inFlightForMs: ageOf(now, ledger.sentAt(name)),
+      connection: { ...connection },
+      lostAgoMs: ageOf(now, timings.lostAt),
+      openStartedAgoMs: ageOf(now, timings.openStartedAt),
+      readyAgoMs: ageOf(now, timings.readyAt),
+      resumeMs,
+      opens: timings.opens,
+      heldCalls: held.map((call) => call.name),
+      inFlightCalls: ledger.names()
+    };
+  }
+  function slowCallSignature(stage, name) {
+    return `${stage}/${name}`.slice(0, 120);
+  }
 
   // src/events.ts
   var pendingEvents = [];
@@ -1529,7 +1567,14 @@ ${originalIndentation}`;
      * Farm menu's versus modes, the dungeon menu's Dark card or the pit's best
      * waves. The counters' group is held only while it is (docs/SERVER_AUDIT.md U-04).
      */
-    countersWanted: false
+    countersWanted: false,
+    /**
+     * When the connection last went (lost, left or AFK'd), when the latest open
+     * began, and when its core subscription landed, as Date.now() values (0 for
+     * never), and how many opens this page has made. A slow-call report carries
+     * them as ages, so it can say how long the resume took (docs/CLIENT_PROBLEMS.md).
+     */
+    timings: { lostAt: 0, openStartedAt: 0, readyAt: 0, opens: 0 }
   };
 
   // node_modules/.pnpm/spacetimedb@2.15.0/node_modules/spacetimedb/dist/index.browser.mjs
@@ -16315,6 +16360,26 @@ ${ty.variants.map(
   function isCallPending(name) {
     return isCallPendingIn(name, pendingReducerCalls, sentReducerCalls);
   }
+  function callDiagnostics(name) {
+    return slowCallDetails({
+      name,
+      now: Date.now(),
+      held: pendingReducerCalls,
+      ledger: sentReducerCalls,
+      connection: {
+        connected: Boolean(live.connection),
+        coreReady: live.coreSubscriptionReady,
+        opening: live.connectionOpening,
+        resumeNeeded: live.resumeNeeded
+      },
+      timings: { ...live.timings }
+    });
+  }
+  var heldCallExpired = () => {
+  };
+  function onHeldCallExpired(listener) {
+    heldCallExpired = listener;
+  }
   function flushPendingReducerCalls() {
     if (!live.connection || !live.coreSubscriptionReady) return;
     clearPendingCallTimer();
@@ -16328,6 +16393,12 @@ ${ty.variants.map(
   function expireHeldCalls() {
     pendingCallTimer = null;
     const { kept, expired } = partitionExpiredCalls(pendingReducerCalls, Date.now());
+    for (const call of expired) {
+      try {
+        heldCallExpired(call.name);
+      } catch {
+      }
+    }
     pendingReducerCalls.length = 0;
     pendingReducerCalls.push(...kept);
     for (const call of expired) {
@@ -17630,6 +17701,8 @@ ${ty.variants.map(
     const connectionAuthMode = "account";
     live.connectionOpening = true;
     live.resumeNeeded = false;
+    live.timings.openStartedAt = Date.now();
+    live.timings.opens += 1;
     emit({
       type: "connecting",
       authMode: connectionAuthMode,
@@ -17648,6 +17721,7 @@ ${ty.variants.map(
         if (epoch !== live.connectionEpoch || live.connection !== conn) return;
         live.coreSubscriptionReady = true;
         live.connectionOpening = false;
+        live.timings.readyAt = Date.now();
         reconnectAttempt = 0;
         publishDomains(conn, groupDomains("core"));
         emit({ type: "subscribed" });
@@ -17661,6 +17735,7 @@ ${ty.variants.map(
       live.connection = null;
       live.coreSubscriptionReady = false;
       live.connectionOpening = false;
+      live.timings.lostAt = Date.now();
       releaseScopedSubscriptions();
       live.resumeNeeded = currentAuthMode() === "account";
       emit({ type: "disconnected", message: error ? String(error) : "" });
@@ -17668,6 +17743,7 @@ ${ty.variants.map(
     }).onConnectError((_ctx, error) => {
       if (epoch === live.connectionEpoch) {
         live.connectionOpening = false;
+        live.timings.lostAt = Date.now();
         releaseScopedSubscriptions();
         live.resumeNeeded = currentAuthMode() === "account";
         emit({ type: "error", command: "connect", message: String(error) });
@@ -17746,6 +17822,7 @@ ${ty.variants.map(
     if (live.clientScreen === CLIENT_SCREENS.farm) return;
     const requiresRefresh = live.clientScreen === CLIENT_SCREENS.farmRoundEnd;
     disconnectBackend();
+    live.timings.lostAt = Date.now();
     live.resumeNeeded = false;
     emit({ type: "idle_disconnected", requiresRefresh });
   }
@@ -18554,6 +18631,28 @@ ${ty.variants.map(
       context: context(),
       log: ring.tail()
     });
+  }
+  var slowCallStages = /* @__PURE__ */ new Set();
+  function noteSlowCall(name, stage) {
+    try {
+      const call = String(name ?? "").slice(0, 64);
+      if (!isSlowCallStage(stage) || call === "" || slowCallStages.has(stage)) return;
+      slowCallStages.add(stage);
+      const signature = slowCallSignature(stage, call);
+      capture("warn", [`slow call: ${signature}`]);
+      const id = `slow-${Date.now()}-${stage}`;
+      ready.set(id, {
+        id,
+        kind: "slow_call",
+        signature,
+        startedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        stage,
+        details: callDiagnostics(call),
+        context: context(),
+        log: ring.tail()
+      });
+    } catch {
+    }
   }
   function startWorker() {
     if (typeof Worker === "undefined" || typeof Blob === "undefined" || typeof URL === "undefined") return;
@@ -20330,6 +20429,7 @@ ${ty.variants.map(
 
   // src/index.ts
   installDiagnostics();
+  onHeldCallExpired((name) => noteSlowCall(name, "held_expired"));
   for (const eventName of ["pointerdown", "keydown", "touchstart", "focus"]) {
     window.addEventListener(eventName, noteUserActivity, { passive: true });
   }
@@ -20356,6 +20456,7 @@ ${ty.variants.map(
     diagnosticsBootBeat,
     takeProblemReports,
     diagnosticsLogTail,
+    noteSlowCall,
     watchRankedRoom
   };
 })();
