@@ -20035,8 +20035,12 @@ ${ty.variants.map(
     get state() {
       return this.real.state;
     }
+    // Where the engine's master goes: the speakers, or an insert in front of
+    // them on the real clock (the gate's warp, music_gate_warp.ts), set before
+    // the engine connects.
+    output = null;
     get destination() {
-      return this.real.destination;
+      return this.output ?? this.real.destination;
     }
     // The rate the clock runs at now.
     get rate() {
@@ -20286,16 +20290,186 @@ ${ty.variants.map(
     }
   };
 
+  // src/music_gate_warp.ts
+  var GATE_WARP_LEAD_SECONDS = 0.05;
+  var IMPLODE_PITCH = 0.75;
+  var WOBBLE_HZ = 5.5;
+  var WOBBLE_TAPE_SECONDS = 3e-3;
+  var WOBBLE_MUFFLE_SECONDS = 2e-3;
+  var OPEN_HZ = 18e3;
+  var IMPLODE_HZ = 900;
+  var SLOW_HZ = 500;
+  var MUFFLE_HZ = 600;
+  var INTO_SECONDS = 0.03;
+  var SNAP_SECONDS = 0.08;
+  var BACK_SECONDS = 0.4;
+  var BACK_BEFORE_END_SECONDS = 0.4;
+  var RELEASE_SECONDS2 = 0.03;
+  var TAPE_BASE_SECONDS = 5e-3;
+  var MUFFLE_BASE_SECONDS = 3e-3;
+  var MAX_DELAY_SECONDS = 2;
+  var CURVE_POINTS2 = 48;
+  function tapeDelayAt(beats, t2) {
+    const sag = 1 - IMPLODE_PITCH;
+    const a = sag / (2 * beats.implode);
+    if (t2 <= beats.implode) return TAPE_BASE_SECONDS + a * t2 * t2;
+    const atFlash = TAPE_BASE_SECONDS + a * beats.implode * beats.implode;
+    return atFlash + (1 - beats.slowRate) * (Math.min(t2, beats.slowEnd) - beats.implode);
+  }
+  function gateWarpEnd(beats) {
+    return Math.max(beats.slowEnd + SNAP_SECONDS, beats.seconds - BACK_BEFORE_END_SECONDS);
+  }
+  function validBeats(beats) {
+    const { implode, slowEnd, slowRate, seconds } = beats;
+    return [implode, slowEnd, slowRate, seconds].every(Number.isFinite) && implode > 0 && slowEnd > implode && slowRate > 0 && slowRate <= 1 && seconds >= slowEnd + 1 && seconds <= 30;
+  }
+  var GateWarp = class {
+    constructor(context2) {
+      this.context = context2;
+      this.input = context2.createGain();
+      this.dry = context2.createGain();
+      this.tape = context2.createGain();
+      this.muffle = context2.createGain();
+      this.tapeDelay = context2.createDelay(MAX_DELAY_SECONDS);
+      this.tapeFilter = context2.createBiquadFilter();
+      this.muffleDelay = context2.createDelay(MAX_DELAY_SECONDS);
+      this.muffleFilter = context2.createBiquadFilter();
+      for (const filter of [this.tapeFilter, this.muffleFilter]) {
+        filter.type = "lowpass";
+        filter.Q.value = 0.9;
+        filter.frequency.value = OPEN_HZ;
+      }
+      this.tapeDelay.delayTime.value = TAPE_BASE_SECONDS;
+      this.muffleDelay.delayTime.value = MUFFLE_BASE_SECONDS;
+      this.dry.gain.value = 1;
+      this.tape.gain.value = 0;
+      this.muffle.gain.value = 0;
+      this.input.connect(this.dry);
+      this.dry.connect(context2.destination);
+      this.input.connect(this.tapeDelay);
+      this.tapeDelay.connect(this.tapeFilter);
+      this.tapeFilter.connect(this.tape);
+      this.tape.connect(context2.destination);
+      this.input.connect(this.muffleFilter);
+      this.muffleFilter.connect(this.muffleDelay);
+      this.muffleDelay.connect(this.muffle);
+      this.muffle.connect(context2.destination);
+    }
+    input;
+    dry;
+    tape;
+    muffle;
+    tapeDelay;
+    tapeFilter;
+    muffleDelay;
+    muffleFilter;
+    wobble = null;
+    playing = null;
+    // The warp under the gate breaking, from now: false (and nothing done) for a
+    // warp it does not know or beats that make no sense.
+    play(kind, beats) {
+      if (kind !== "hell_gate" || !validBeats(beats)) return false;
+      this.release();
+      const at = this.context.currentTime + GATE_WARP_LEAD_SECONDS;
+      const flash = at + beats.implode;
+      const snap = at + beats.slowEnd;
+      const end = at + gateWarpEnd(beats);
+      const back = end - BACK_SECONDS;
+      crossfade(this.dry.gain, this.tape.gain, at, INTO_SECONDS);
+      const curve = new Float32Array(CURVE_POINTS2);
+      for (let i = 0; i < CURVE_POINTS2; i++) curve[i] = tapeDelayAt(beats, beats.implode * i / (CURVE_POINTS2 - 1));
+      this.tapeDelay.delayTime.setValueCurveAtTime(curve, at, beats.implode);
+      this.tapeDelay.delayTime.linearRampToValueAtTime(tapeDelayAt(beats, beats.slowEnd), snap);
+      this.tapeFilter.frequency.setValueAtTime(OPEN_HZ, at);
+      this.tapeFilter.frequency.exponentialRampToValueAtTime(IMPLODE_HZ, flash);
+      this.tapeFilter.frequency.exponentialRampToValueAtTime(SLOW_HZ, snap);
+      this.muffleFilter.frequency.setValueAtTime(MUFFLE_HZ, snap);
+      this.muffleFilter.frequency.exponentialRampToValueAtTime(OPEN_HZ, back);
+      this.tape.gain.setValueAtTime(1, snap);
+      this.tape.gain.linearRampToValueAtTime(0, snap + SNAP_SECONDS);
+      this.muffle.gain.setValueAtTime(0, snap);
+      this.muffle.gain.linearRampToValueAtTime(1, snap + SNAP_SECONDS);
+      crossfade(this.muffle.gain, this.dry.gain, back, BACK_SECONDS);
+      this.tapeDelay.delayTime.setValueAtTime(TAPE_BASE_SECONDS, snap + SNAP_SECONDS + 0.01);
+      this.tapeFilter.frequency.setValueAtTime(OPEN_HZ, snap + SNAP_SECONDS + 0.01);
+      const osc = this.context.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = WOBBLE_HZ;
+      const tapeDepth = this.context.createGain();
+      const muffleDepth = this.context.createGain();
+      tapeDepth.gain.setValueAtTime(0, at);
+      tapeDepth.gain.linearRampToValueAtTime(WOBBLE_TAPE_SECONDS, flash);
+      muffleDepth.gain.setValueAtTime(WOBBLE_MUFFLE_SECONDS, snap);
+      muffleDepth.gain.linearRampToValueAtTime(0, back);
+      osc.connect(tapeDepth);
+      osc.connect(muffleDepth);
+      tapeDepth.connect(this.tapeDelay.delayTime);
+      muffleDepth.connect(this.muffleDelay.delayTime);
+      osc.start(at);
+      osc.stop(end + 0.05);
+      this.wobble = { osc, depths: [tapeDepth, muffleDepth] };
+      this.playing = { kind, start: at, end };
+      return true;
+    }
+    // Back to the dry music at once (the player moved on): everything planned is
+    // called off and the paths fade over RELEASE_SECONDS.
+    release() {
+      const now = this.context.currentTime;
+      if (this.playing === null || this.playing.end <= now) {
+        this.playing = null;
+        return;
+      }
+      for (const [param, level] of [[this.dry.gain, 1], [this.tape.gain, 0], [this.muffle.gain, 0]]) {
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(param.value, now);
+        param.linearRampToValueAtTime(level, now + RELEASE_SECONDS2);
+      }
+      for (const [param, value] of [
+        [this.tapeDelay.delayTime, TAPE_BASE_SECONDS],
+        [this.tapeFilter.frequency, OPEN_HZ],
+        [this.muffleFilter.frequency, OPEN_HZ]
+      ]) {
+        param.cancelScheduledValues(now + RELEASE_SECONDS2);
+        param.setValueAtTime(value, now + RELEASE_SECONDS2 + 0.01);
+      }
+      this.wobble?.osc.stop(now + RELEASE_SECONDS2 + 0.02);
+      this.wobble = null;
+      this.playing = null;
+    }
+    status() {
+      if (this.playing !== null && this.playing.end <= this.context.currentTime) this.playing = null;
+      return this.playing === null ? null : { ...this.playing };
+    }
+  };
+  function crossfade(from, to, at, seconds) {
+    from.setValueAtTime(1, at);
+    from.linearRampToValueAtTime(0, at + seconds);
+    to.setValueAtTime(0, at);
+    to.linearRampToValueAtTime(1, at + seconds);
+  }
+
   // src/music.ts
   function installMusic() {
     let warp = null;
     let tempo = null;
+    let gate = null;
+    let real = null;
+    let volume = 0;
+    let state = "";
+    let gateState = "";
     const engine = new MusicEngine({
       createContext: () => {
         const Context = window.AudioContext || window.webkitAudioContext;
         if (!Context) return null;
         try {
-          warp = new MusicWarp(new Context({ latencyHint: "playback" }));
+          real = new Context({ latencyHint: "playback" });
+          warp = new MusicWarp(real);
+          try {
+            gate = new GateWarp(real);
+            warp.output = gate.input;
+          } catch {
+            gate = null;
+          }
           return warp;
         } catch {
           return null;
@@ -20332,12 +20506,33 @@ ${ty.variants.map(
       window.addEventListener(eventName, unlock, { passive: true });
     }
     window.LDBGMusic = {
-      setState: (name) => engine.setState(name),
-      setVolume: (linear) => engine.setVolume(linear),
-      status: () => JSON.stringify({ ...engine.status(), tempo: tempo.status() }),
+      setState: (name) => {
+        state = String(name);
+        if (gate !== null && gateState !== "" && state !== gateState) {
+          gate.release();
+          gateState = "";
+        }
+        engine.setState(name);
+      },
+      setVolume: (linear) => {
+        volume = Number(linear) || 0;
+        engine.setVolume(linear);
+      },
+      status: () => JSON.stringify({ ...engine.status(), tempo: tempo.status(), warp: gate?.status() ?? null }),
+      warp: (kind, implode, slowEnd, slowRate, seconds) => {
+        if (gate === null || real === null || real.state !== "running" || volume <= 0) return false;
+        const played = gate.play(String(kind), {
+          implode: Number(implode),
+          slowEnd: Number(slowEnd),
+          slowRate: Number(slowRate),
+          seconds: Number(seconds)
+        });
+        if (played) gateState = state;
+        return played;
+      },
       setTempoTest: (mode) => tempo.setMode(mode),
       setDanger: (danger) => tempo.setDanger(danger),
-      countIn: (state, count, grid, delay) => engine.countIn(state, Number(count), Number(grid), Number(delay))
+      countIn: (state2, count, grid, delay) => engine.countIn(state2, Number(count), Number(grid), Number(delay))
     };
   }
 
