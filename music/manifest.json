@@ -519,6 +519,48 @@
       "switchEveryBars": 1,
       "file": "pvp_13-d429f30251e5.ogg",
       "fallback": "pvp_13-5be6f06266aa.m4a"
+    },
+    "hell_eerie": {
+      "bpm": 150,
+      "bars": 4,
+      "switchEveryBars": 1,
+      "file": "hell_eerie-ee7889683673.ogg",
+      "fallback": "hell_eerie-c24371db3f89.m4a"
+    },
+    "hell_rise": {
+      "bpm": 150,
+      "bars": 8,
+      "switchEveryBars": 1,
+      "file": "hell_rise-00a1e16be799.ogg",
+      "fallback": "hell_rise-c7cda66671c3.m4a"
+    },
+    "hell_1": {
+      "bpm": 150,
+      "bars": 8,
+      "switchEveryBars": 1,
+      "file": "hell_1-6221f0952220.ogg",
+      "fallback": "hell_1-22705e3c7ab5.m4a"
+    },
+    "hell_2": {
+      "bpm": 150,
+      "bars": 8,
+      "switchEveryBars": 1,
+      "file": "hell_2-2bfda6ccf797.ogg",
+      "fallback": "hell_2-2342467f7413.m4a"
+    },
+    "hell_3": {
+      "bpm": 150,
+      "bars": 8,
+      "switchEveryBars": 1,
+      "file": "hell_3-3a1cdecdcd19.ogg",
+      "fallback": "hell_3-1be88fd8ea2b.m4a"
+    },
+    "hell_4": {
+      "bpm": 150,
+      "bars": 8,
+      "switchEveryBars": 1,
+      "file": "hell_4-d11ebb59a20c.ogg",
+      "fallback": "hell_4-69d4ec1129f3.m4a"
     }
   },
   "leadIns": {
@@ -589,7 +631,7 @@
       ],
       "hit": "menu_sink",
       "immediate": true,
-      "releaseSeconds": 1.0,
+      "releaseSeconds": 1,
       "fadeInSeconds": 0.5
     },
     {
@@ -827,6 +869,111 @@
       ],
       "to": [
         "farm"
+      ],
+      "leadIn": "cymbal_lead_up",
+      "switchEveryBars": 1,
+      "preload": false
+    },
+    {
+      "from": [
+        "hell_eerie"
+      ],
+      "to": [
+        "hell"
+      ],
+      "immediate": true,
+      "releaseSeconds": 0.3
+    },
+    {
+      "from": [
+        "desert_intro",
+        "desert_1",
+        "desert_2",
+        "desert_3",
+        "desert_4",
+        "desert_5",
+        "desert_6",
+        "desert_7",
+        "desert_8",
+        "desert_9",
+        "desert_10",
+        "desert_11",
+        "desert_12",
+        "desert_13",
+        "desert_14",
+        "desert_15",
+        "desert_16"
+      ],
+      "to": [
+        "hell"
+      ],
+      "immediate": true,
+      "releaseSeconds": 0.6,
+      "preload": false
+    },
+    {
+      "from": [
+        "desert_intro",
+        "desert_1",
+        "desert_2",
+        "desert_3",
+        "desert_4",
+        "desert_5",
+        "desert_6",
+        "desert_7",
+        "desert_8",
+        "desert_9",
+        "desert_10",
+        "desert_11",
+        "desert_12",
+        "desert_13",
+        "desert_14",
+        "desert_15",
+        "desert_16"
+      ],
+      "to": [
+        "old_man",
+        "hell_fight"
+      ],
+      "leadIn": "cymbal_lead_up",
+      "switchEveryBars": 1,
+      "preload": false
+    },
+    {
+      "from": [
+        "hell_eerie",
+        "hell_rise",
+        "hell_1",
+        "hell_2",
+        "hell_3",
+        "hell_4"
+      ],
+      "to": [
+        "menu"
+      ],
+      "leadIn": "cymbal_lead_up",
+      "switchEveryBars": 1
+    },
+    {
+      "from": [
+        "hell_eerie",
+        "hell_rise",
+        "hell_1",
+        "hell_2",
+        "hell_3",
+        "hell_4"
+      ],
+      "to": "*",
+      "leadIn": "cymbal_lead_up",
+      "switchEveryBars": 1,
+      "preload": false
+    },
+    {
+      "from": "*",
+      "to": [
+        "old_man",
+        "hell",
+        "hell_fight"
       ],
       "leadIn": "cymbal_lead_up",
       "switchEveryBars": 1,
@@ -1161,6 +1308,28 @@
         "desert_14",
         "desert_15",
         "desert_16"
+      ]
+    },
+    "old_man": {
+      "play": [
+        "hell_eerie"
+      ]
+    },
+    "hell": {
+      "intro": "hell_rise",
+      "play": [
+        "hell_1",
+        "hell_2",
+        "hell_3",
+        "hell_4"
+      ]
+    },
+    "hell_fight": {
+      "play": [
+        "hell_1",
+        "hell_2",
+        "hell_3",
+        "hell_4"
       ]
     },
     "duel_wait": {
