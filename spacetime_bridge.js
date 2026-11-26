@@ -19152,6 +19152,11 @@ ${ty.variants.map(
         this.master.gain.linearRampToValueAtTime(this.level(), now + 0.05);
       }
     }
+    // The level the music plays at (the slider's, with the song's own under it):
+    // for a sound made beside the song, as the gate's warp's drone is.
+    outputLevel() {
+      return this.level();
+    }
     // The slider's volume, with the song's own level under it.
     level() {
       return this.volume * Math.pow(10, (this.manifest?.gainDb ?? 0) / 20);
@@ -20292,161 +20297,277 @@ ${ty.variants.map(
 
   // src/music_gate_warp.ts
   var GATE_WARP_LEAD_SECONDS = 0.05;
-  var IMPLODE_PITCH = 0.75;
-  var WOBBLE_HZ = 5.5;
-  var WOBBLE_TAPE_SECONDS = 3e-3;
-  var WOBBLE_MUFFLE_SECONDS = 2e-3;
-  var OPEN_HZ = 18e3;
-  var IMPLODE_HZ = 900;
-  var SLOW_HZ = 500;
-  var MUFFLE_HZ = 600;
+  var QUIET_SECONDS = 0.25;
+  var QUIET_FADE_SECONDS = 0.12;
+  var QUIET_LEVEL = 0.02;
+  var LAND_SECONDS = 0.02;
   var INTO_SECONDS = 0.03;
-  var SNAP_SECONDS = 0.08;
-  var BACK_SECONDS = 0.4;
-  var BACK_BEFORE_END_SECONDS = 0.4;
   var RELEASE_SECONDS2 = 0.03;
-  var TAPE_BASE_SECONDS = 5e-3;
-  var MUFFLE_BASE_SECONDS = 3e-3;
-  var MAX_DELAY_SECONDS = 2;
-  var CURVE_POINTS2 = 48;
-  function tapeDelayAt(beats, t2) {
-    const sag = 1 - IMPLODE_PITCH;
-    const a = sag / (2 * beats.implode);
-    if (t2 <= beats.implode) return TAPE_BASE_SECONDS + a * t2 * t2;
-    const atFlash = TAPE_BASE_SECONDS + a * beats.implode * beats.implode;
-    return atFlash + (1 - beats.slowRate) * (Math.min(t2, beats.slowEnd) - beats.implode);
-  }
-  function gateWarpEnd(beats) {
-    return Math.max(beats.slowEnd + SNAP_SECONDS, beats.seconds - BACK_BEFORE_END_SECONDS);
-  }
+  var WOW_HZ = 0.6;
+  var WOW_SEMITONES = 0.2;
+  var WOW_BASE_SECONDS = 8e-3;
+  var DRONE_HZ = [55, 55.7, 110];
+  var DRONE_MIX = [0.5, 0.5, 0.18];
+  var DRONE_LEVEL = 0.1;
+  var DRONE_PEAK = 0.14;
+  var OPEN_HZ = 18e3;
+  var CLOSED_HZ = 700;
+  var REVERB_SECONDS = 3.5;
+  var REVERB_LEVEL = 0.4;
+  var CATCH_SECONDS = 0.1;
+  var CATCH_FEEDBACK = 0.92;
+  var CATCH_LEVEL = 0.8;
+  var CATCH_HZ = 2200;
+  var CATCH_LAST_HZ = 700;
+  var MAX_DELAY_SECONDS = 1;
+  var DRAIN_SECONDS = REVERB_SECONDS + 0.1;
   function validBeats(beats) {
     const { implode, slowEnd, slowRate, seconds } = beats;
-    return [implode, slowEnd, slowRate, seconds].every(Number.isFinite) && implode > 0 && slowEnd > implode && slowRate > 0 && slowRate <= 1 && seconds >= slowEnd + 1 && seconds <= 30;
+    return [implode, slowEnd, slowRate, seconds].every(Number.isFinite) && implode > CATCH_SECONDS + 0.05 && slowEnd > implode + QUIET_SECONDS + QUIET_FADE_SECONDS && slowRate > 0 && slowRate <= 1 && seconds >= slowEnd + 1 && seconds <= 30;
+  }
+  function gateWarpEnd(beats) {
+    return beats.slowEnd + LAND_SECONDS;
+  }
+  function wowDepthSeconds(semitones) {
+    return (Math.pow(2, semitones / 12) - 1) / (2 * Math.PI * WOW_HZ);
+  }
+  function gateReverb(sampleRate) {
+    const length = Math.round(REVERB_SECONDS * sampleRate);
+    const predelay = Math.round(0.025 * sampleRate);
+    let seed = 27262;
+    const random = () => {
+      seed = seed + 1831565813 | 0;
+      let t2 = Math.imul(seed ^ seed >>> 15, 1 | seed);
+      t2 = t2 + Math.imul(t2 ^ t2 >>> 7, 61 | t2) ^ t2;
+      return ((t2 ^ t2 >>> 14) >>> 0) / 4294967296;
+    };
+    return [0, 1].map(() => {
+      const out = new Float32Array(length);
+      let low = 0;
+      for (let i = predelay; i < length; i++) {
+        const share = (i - predelay) / (length - predelay);
+        const decay = Math.pow(10, -60 * share / 20);
+        const pole = 0.35 + 0.6 * share;
+        low = low * pole + (random() * 2 - 1) * (1 - pole);
+        out[i] = low * decay;
+      }
+      let energy = 0;
+      for (const v of out) energy += v * v;
+      const scale = 1 / Math.sqrt(Math.max(energy, 1e-12));
+      for (let i = 0; i < length; i++) out[i] *= scale;
+      return out;
+    });
   }
   var GateWarp = class {
     constructor(context2) {
       this.context = context2;
       this.input = context2.createGain();
       this.dry = context2.createGain();
-      this.tape = context2.createGain();
-      this.muffle = context2.createGain();
-      this.tapeDelay = context2.createDelay(MAX_DELAY_SECONDS);
-      this.tapeFilter = context2.createBiquadFilter();
-      this.muffleDelay = context2.createDelay(MAX_DELAY_SECONDS);
-      this.muffleFilter = context2.createBiquadFilter();
-      for (const filter of [this.tapeFilter, this.muffleFilter]) {
-        filter.type = "lowpass";
-        filter.Q.value = 0.9;
-        filter.frequency.value = OPEN_HZ;
-      }
-      this.tapeDelay.delayTime.value = TAPE_BASE_SECONDS;
-      this.muffleDelay.delayTime.value = MUFFLE_BASE_SECONDS;
+      this.wow = context2.createDelay(MAX_DELAY_SECONDS);
+      this.lowpass = context2.createBiquadFilter();
+      this.wet = context2.createGain();
+      this.send = context2.createGain();
+      this.reverb = context2.createConvolver();
+      this.verb = context2.createGain();
+      this.catchIn = context2.createGain();
+      this.catchLine = context2.createDelay(MAX_DELAY_SECONDS);
+      this.catchFilter = context2.createBiquadFilter();
+      this.catchBack = context2.createGain();
+      this.catchOut = context2.createGain();
+      this.drone = context2.createGain();
       this.dry.gain.value = 1;
-      this.tape.gain.value = 0;
-      this.muffle.gain.value = 0;
+      for (const gain of [this.wet, this.send, this.verb, this.catchIn, this.catchOut, this.drone]) gain.gain.value = 0;
+      this.catchBack.gain.value = CATCH_FEEDBACK;
+      this.wow.delayTime.value = WOW_BASE_SECONDS;
+      this.catchLine.delayTime.value = CATCH_SECONDS;
+      for (const [filter, hz] of [[this.lowpass, OPEN_HZ], [this.catchFilter, CATCH_HZ]]) {
+        filter.type = "lowpass";
+        filter.Q.value = 0.7;
+        filter.frequency.value = hz;
+      }
+      const sides = gateReverb(context2.sampleRate);
+      const buffer = context2.createBuffer(2, sides[0].length, context2.sampleRate);
+      sides.forEach((side, channel) => buffer.getChannelData(channel).set(side));
+      this.reverb.normalize = false;
+      this.reverb.buffer = buffer;
       this.input.connect(this.dry);
       this.dry.connect(context2.destination);
-      this.input.connect(this.tapeDelay);
-      this.tapeDelay.connect(this.tapeFilter);
-      this.tapeFilter.connect(this.tape);
-      this.tape.connect(context2.destination);
-      this.input.connect(this.muffleFilter);
-      this.muffleFilter.connect(this.muffleDelay);
-      this.muffleDelay.connect(this.muffle);
-      this.muffle.connect(context2.destination);
+      this.wow.connect(this.lowpass);
+      this.lowpass.connect(this.wet);
+      this.lowpass.connect(this.send);
+      this.send.connect(this.reverb);
+      this.reverb.connect(this.verb);
+      this.lowpass.connect(this.catchIn);
+      this.catchIn.connect(this.catchLine);
+      this.catchLine.connect(this.catchFilter);
+      this.catchFilter.connect(this.catchBack);
+      this.catchBack.connect(this.catchLine);
+      this.catchFilter.connect(this.catchOut);
+      this.catchOut.connect(this.send);
     }
     input;
+    // The nodes, built once; `outputs` are joined to the speakers only while a
+    // warp plays.
     dry;
-    tape;
-    muffle;
-    tapeDelay;
-    tapeFilter;
-    muffleDelay;
-    muffleFilter;
-    wobble = null;
+    wow;
+    lowpass;
+    wet;
+    send;
+    reverb;
+    verb;
+    catchIn;
+    catchLine;
+    catchFilter;
+    catchBack;
+    catchOut;
+    drone;
+    live = null;
+    joined = false;
     playing = null;
     // The warp under the gate breaking, from now: false (and nothing done) for a
-    // warp it does not know or beats that make no sense.
-    play(kind, beats) {
-      if (kind !== "hell_gate" || !validBeats(beats)) return false;
+    // warp it does not know or beats that make no sense. `level` is the music's
+    // own (the slider and the song's gain): the drone is made here, not by the
+    // song, so it is put at the music's level by hand.
+    play(kind, beats, level = 1) {
+      if (kind !== "hell_gate" || !validBeats(beats) || !(level > 0)) return false;
       this.release();
+      this.part();
       const at = this.context.currentTime + GATE_WARP_LEAD_SECONDS;
       const flash = at + beats.implode;
-      const snap = at + beats.slowEnd;
+      const stones = at + beats.slowEnd;
+      const quiet = stones - QUIET_SECONDS;
+      const falling = quiet - QUIET_FADE_SECONDS;
       const end = at + gateWarpEnd(beats);
-      const back = end - BACK_SECONDS;
-      crossfade(this.dry.gain, this.tape.gain, at, INTO_SECONDS);
-      const curve = new Float32Array(CURVE_POINTS2);
-      for (let i = 0; i < CURVE_POINTS2; i++) curve[i] = tapeDelayAt(beats, beats.implode * i / (CURVE_POINTS2 - 1));
-      this.tapeDelay.delayTime.setValueCurveAtTime(curve, at, beats.implode);
-      this.tapeDelay.delayTime.linearRampToValueAtTime(tapeDelayAt(beats, beats.slowEnd), snap);
-      this.tapeFilter.frequency.setValueAtTime(OPEN_HZ, at);
-      this.tapeFilter.frequency.exponentialRampToValueAtTime(IMPLODE_HZ, flash);
-      this.tapeFilter.frequency.exponentialRampToValueAtTime(SLOW_HZ, snap);
-      this.muffleFilter.frequency.setValueAtTime(MUFFLE_HZ, snap);
-      this.muffleFilter.frequency.exponentialRampToValueAtTime(OPEN_HZ, back);
-      this.tape.gain.setValueAtTime(1, snap);
-      this.tape.gain.linearRampToValueAtTime(0, snap + SNAP_SECONDS);
-      this.muffle.gain.setValueAtTime(0, snap);
-      this.muffle.gain.linearRampToValueAtTime(1, snap + SNAP_SECONDS);
-      crossfade(this.muffle.gain, this.dry.gain, back, BACK_SECONDS);
-      this.tapeDelay.delayTime.setValueAtTime(TAPE_BASE_SECONDS, snap + SNAP_SECONDS + 0.01);
-      this.tapeFilter.frequency.setValueAtTime(OPEN_HZ, snap + SNAP_SECONDS + 0.01);
-      const osc = this.context.createOscillator();
-      osc.type = "sine";
-      osc.frequency.value = WOBBLE_HZ;
-      const tapeDepth = this.context.createGain();
-      const muffleDepth = this.context.createGain();
-      tapeDepth.gain.setValueAtTime(0, at);
-      tapeDepth.gain.linearRampToValueAtTime(WOBBLE_TAPE_SECONDS, flash);
-      muffleDepth.gain.setValueAtTime(WOBBLE_MUFFLE_SECONDS, snap);
-      muffleDepth.gain.linearRampToValueAtTime(0, back);
-      osc.connect(tapeDepth);
-      osc.connect(muffleDepth);
-      tapeDepth.connect(this.tapeDelay.delayTime);
-      muffleDepth.connect(this.muffleDelay.delayTime);
-      osc.start(at);
-      osc.stop(end + 0.05);
-      this.wobble = { osc, depths: [tapeDepth, muffleDepth] };
+      this.join();
+      const dry = this.dry.gain;
+      dry.setValueAtTime(1, at);
+      dry.linearRampToValueAtTime(0, at + INTO_SECONDS);
+      dry.setValueAtTime(0, stones);
+      dry.linearRampToValueAtTime(1, stones + LAND_SECONDS);
+      const oscs = this.startOscillators(at, end);
+      const depth = this.context.createGain();
+      depth.gain.setValueAtTime(0, at);
+      depth.gain.linearRampToValueAtTime(wowDepthSeconds(WOW_SEMITONES), flash);
+      oscs[0].connect(depth);
+      depth.connect(this.wow.delayTime);
+      const lowpass = this.lowpass.frequency;
+      lowpass.setValueAtTime(OPEN_HZ, at);
+      lowpass.exponentialRampToValueAtTime(CLOSED_HZ, flash);
+      lowpass.exponentialRampToValueAtTime(CLOSED_HZ * 0.66, quiet);
+      const drone = this.drone.gain;
+      drone.setValueAtTime(0, at);
+      drone.linearRampToValueAtTime(DRONE_LEVEL * level, flash);
+      drone.linearRampToValueAtTime(DRONE_PEAK * level, falling);
+      drone.linearRampToValueAtTime(QUIET_LEVEL * level, quiet);
+      drone.linearRampToValueAtTime(0, stones);
+      const wet = this.wet.gain;
+      const send = this.send.gain;
+      const verb = this.verb.gain;
+      wet.setValueAtTime(0, at);
+      wet.linearRampToValueAtTime(1, at + INTO_SECONDS);
+      send.setValueAtTime(0, at);
+      verb.setValueAtTime(0, at);
+      wet.setValueAtTime(1, flash);
+      wet.linearRampToValueAtTime(0, flash + 0.01);
+      send.linearRampToValueAtTime(0.5, flash);
+      send.setValueAtTime(0.5, falling);
+      send.linearRampToValueAtTime(0, quiet);
+      verb.linearRampToValueAtTime(REVERB_LEVEL, flash);
+      verb.setValueAtTime(REVERB_LEVEL, falling);
+      verb.linearRampToValueAtTime(0, quiet);
+      const catchBack = this.catchBack.gain;
+      catchBack.setValueAtTime(CATCH_FEEDBACK, flash - CATCH_SECONDS - 5e-3);
+      catchBack.setValueAtTime(CATCH_FEEDBACK, falling);
+      catchBack.linearRampToValueAtTime(0, quiet);
+      const catchIn = this.catchIn.gain;
+      catchIn.setValueAtTime(0, flash - CATCH_SECONDS - 5e-3);
+      catchIn.linearRampToValueAtTime(1, flash - CATCH_SECONDS);
+      catchIn.setValueAtTime(1, flash - 5e-3);
+      catchIn.linearRampToValueAtTime(0, flash);
+      const catchOut = this.catchOut.gain;
+      catchOut.setValueAtTime(0, flash - 5e-3);
+      catchOut.linearRampToValueAtTime(CATCH_LEVEL, flash);
+      catchOut.setValueAtTime(CATCH_LEVEL, falling);
+      catchOut.linearRampToValueAtTime(QUIET_LEVEL, quiet);
+      catchOut.linearRampToValueAtTime(0, stones);
+      this.catchFilter.frequency.setValueAtTime(CATCH_HZ, flash);
+      this.catchFilter.frequency.exponentialRampToValueAtTime(CATCH_LAST_HZ, quiet);
+      this.live = { oscs, depth };
       this.playing = { kind, start: at, end };
       return true;
     }
-    // Back to the dry music at once (the player moved on): everything planned is
-    // called off and the paths fade over RELEASE_SECONDS.
+    // Back to the dry music at once (the player moved on, or muted): everything
+    // planned is called off and the paths fade over RELEASE_SECONDS.
     release() {
       const now = this.context.currentTime;
       if (this.playing === null || this.playing.end <= now) {
         this.playing = null;
         return;
       }
-      for (const [param, level] of [[this.dry.gain, 1], [this.tape.gain, 0], [this.muffle.gain, 0]]) {
+      const gains = [[this.dry.gain, 1]];
+      for (const gain of [this.wet, this.send, this.verb, this.catchIn, this.catchBack, this.catchOut, this.drone]) gains.push([gain.gain, 0]);
+      for (const [param, level] of gains) {
         param.cancelScheduledValues(now);
         param.setValueAtTime(param.value, now);
         param.linearRampToValueAtTime(level, now + RELEASE_SECONDS2);
       }
-      for (const [param, value] of [
-        [this.tapeDelay.delayTime, TAPE_BASE_SECONDS],
-        [this.tapeFilter.frequency, OPEN_HZ],
-        [this.muffleFilter.frequency, OPEN_HZ]
-      ]) {
-        param.cancelScheduledValues(now + RELEASE_SECONDS2);
-        param.setValueAtTime(value, now + RELEASE_SECONDS2 + 0.01);
-      }
-      this.wobble?.osc.stop(now + RELEASE_SECONDS2 + 0.02);
-      this.wobble = null;
+      for (const osc of this.live?.oscs ?? []) osc.stop(now + RELEASE_SECONDS2 + DRAIN_SECONDS);
       this.playing = null;
     }
     status() {
       if (this.playing !== null && this.playing.end <= this.context.currentTime) this.playing = null;
       return this.playing === null ? null : { ...this.playing };
     }
+    // Whether the warp's paths are joined to the speakers (only while one plays).
+    isJoined() {
+      return this.joined;
+    }
+    // The wow's sway and the drone's three tones, from `at`, stopped at `end`;
+    // the first to stop parts the warp's paths again.
+    startOscillators(at, end) {
+      const lfo = this.context.createOscillator();
+      lfo.type = "sine";
+      lfo.frequency.value = WOW_HZ;
+      const oscs = [lfo];
+      DRONE_HZ.forEach((hz, index) => {
+        const osc = this.context.createOscillator();
+        osc.type = "sine";
+        osc.frequency.value = hz;
+        const mix = this.context.createGain();
+        mix.gain.value = DRONE_MIX[index];
+        osc.connect(mix);
+        mix.connect(this.drone);
+        oscs.push(osc);
+      });
+      for (const osc of oscs) {
+        osc.start(at);
+        osc.stop(end + DRAIN_SECONDS);
+      }
+      const mine = oscs;
+      lfo.onended = () => {
+        if (this.live?.oscs === mine) {
+          this.part();
+          this.live = null;
+        }
+      };
+      return oscs;
+    }
+    join() {
+      if (this.joined) return;
+      this.input.connect(this.wow);
+      this.wet.connect(this.context.destination);
+      this.verb.connect(this.context.destination);
+      this.catchOut.connect(this.context.destination);
+      this.drone.connect(this.context.destination);
+      this.joined = true;
+    }
+    part() {
+      if (!this.joined) return;
+      this.input.disconnect(this.wow);
+      for (const node of [this.wet, this.verb, this.catchOut, this.drone]) node.disconnect(this.context.destination);
+      this.joined = false;
+    }
   };
-  function crossfade(from, to, at, seconds) {
-    from.setValueAtTime(1, at);
-    from.linearRampToValueAtTime(0, at + seconds);
-    to.setValueAtTime(0, at);
-    to.linearRampToValueAtTime(1, at + seconds);
-  }
 
   // src/music.ts
   function installMusic() {
@@ -20516,6 +20637,7 @@ ${ty.variants.map(
       },
       setVolume: (linear) => {
         volume = Number(linear) || 0;
+        if (volume <= 0) gate?.release();
         engine.setVolume(linear);
       },
       status: () => JSON.stringify({ ...engine.status(), tempo: tempo.status(), warp: gate?.status() ?? null }),
@@ -20526,7 +20648,7 @@ ${ty.variants.map(
           slowEnd: Number(slowEnd),
           slowRate: Number(slowRate),
           seconds: Number(seconds)
-        });
+        }, engine.outputLevel());
         if (played) gateState = state;
         return played;
       },

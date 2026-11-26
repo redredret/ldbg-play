@@ -529,10 +529,10 @@
     },
     "hell_rise": {
       "bpm": 150,
-      "bars": 8,
+      "bars": 9,
       "switchEveryBars": 1,
-      "file": "hell_rise-00a1e16be799.ogg",
-      "fallback": "hell_rise-c7cda66671c3.m4a"
+      "file": "hell_rise-e35be42b1db6.ogg",
+      "fallback": "hell_rise-1ae8c083e903.m4a"
     },
     "hell_1": {
       "bpm": 150,
