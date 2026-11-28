@@ -973,7 +973,10 @@ ${originalIndentation}`;
         skinUnlocks: many("mySkinUnlocks"),
         // The Story regions cleared (story_region_clear, 2026-11-20): each opens
         // its Endless region, so they ride with the records that open the rest.
-        storyRegionClears: many("myStoryRegionClears")
+        storyRegionClears: many("myStoryRegionClears"),
+        // How many times this account revived a co-op partner (GA-22,
+        // docs/COOP_EXTRAS.md): the co-op skin's and Comrade's progress.
+        coopRecord: one("myCoopRecord")
       }
     },
     // The Collection Log (docs/COLLECTION_LOG_PLAN.md): every item an enemy's kill
@@ -1123,6 +1126,12 @@ ${originalIndentation}`;
     // tiny and shared, so it rides the counters' group.
     slimeBoard: { group: "playerCounts", keys: { slimeBestWaves: many("slimeBestWaves") } },
     market: { group: "market", keys: { marketListings: many("marketListings") } },
+    // Buy orders (GA-41): the player's own, and what the Market wants. Held with
+    // the listings, only while the Store is open.
+    marketOrders: {
+      group: "market",
+      keys: { marketBuyOrders: many("myMarketBuyOrders"), marketBuyOrderBook: many("marketBuyOrderBook") }
+    },
     marketPrices: { group: "marketPrices", keys: { marketPrices: many("marketPriceGuide") } },
     marketHistory: {
       group: "marketHistory",
@@ -1223,9 +1232,29 @@ ${originalIndentation}`;
     // Requests, recent players and invites each on a domain of their own, so an
     // invite -- the one that moves while a player waits -- re-sends nothing else.
     friends: { group: "friends", keys: { friends: many("myFriends"), friendSettings: many("myFriendSettings") } },
+    // Who this player shows their hiscores to (docs/HISCORES.md): the Friends
+    // screen's PRIVACY tab. Always a list, so "everyone" (no row) is told apart
+    // from "not loaded".
+    hiscorePrivacy: { group: "friends", keys: { hiscorePrivacy: many("myHiscorePrivacy") } },
+    // The HISCORES boards and the player's own and friends' lines, held only
+    // while the screen is open (the `hiscores` client context).
+    hiscores: { group: "hiscores", keys: { hiscoreBoards: many("hiscoreBoards"), myHiscores: many("myHiscores") } },
     friendRequests: { group: "friends", keys: { friendRequests: many("myFriendRequests") } },
     recentPlayers: { group: "friends", keys: { recentPlayers: many("myRecentPlayers") } },
-    gameInvites: { group: "friends", keys: { gameInvites: many("myGameInvites") } }
+    gameInvites: { group: "friends", keys: { gameInvites: many("myGameInvites") } },
+    // What the player shares beyond their list (docs/LATELY.md): whether LATELY
+    // names them and whether friends may watch them. Always one row.
+    shareSettings: { group: "friends", keys: { shareSettings: one("myShareSettings") } },
+    // The hub's LATELY strip (GA-21): server-written lines, for the whole
+    // connection, since other people's play happens to the hub. Small, capped,
+    // written a dozen times an hour at most. With the friends because it needs
+    // the same signed-in connection and nothing of chat's gate.
+    lately: { group: "friends", keys: { lately: many("myLately") } },
+    // WATCH a friend's Farm room or co-op party (GA-40): friends who can be
+    // watched now and the room key of each.
+    friendWatch: { group: "friends", keys: { friendWatch: many("myWatchableFriendRooms") } },
+    // The watched room's boards, rebuilt from its lanes (friend_watch.ts).
+    friendWatchBoards: { group: "friends", observes: [], built: ["friendWatchBoards"] }
   };
   var CLIENT_SCREENS = {
     /** The screen before Godot has said anything. */
@@ -1568,6 +1597,8 @@ ${originalIndentation}`;
      * waves. The counters' group is held only while it is (docs/SERVER_AUDIT.md U-04).
      */
     countersWanted: false,
+    // Whether the HISCORES screen is open (docs/HISCORES.md).
+    hiscoresWanted: false,
     /**
      * When the connection last went (lost, left or AFK'd), when the latest open
      * began, and when its core subscription landed, as Date.now() values (0 for
@@ -10254,6 +10285,11 @@ ${ty.variants.map(
     requestId: t.string()
   };
 
+  // src/module_bindings/cancel_market_buy_order_reducer.ts
+  var cancel_market_buy_order_reducer_default = {
+    orderId: t.string()
+  };
+
   // src/module_bindings/cancel_market_listing_reducer.ts
   var cancel_market_listing_reducer_default = {
     listingId: t.string()
@@ -10690,6 +10726,13 @@ ${ty.variants.map(
     displayName: t.string(),
     hours: t.u32(),
     reason: t.string()
+  };
+
+  // src/module_bindings/place_market_buy_order_reducer.ts
+  var place_market_buy_order_reducer_default = {
+    itemId: t.string(),
+    quantity: t.u32(),
+    pricePer: t.u32()
   };
 
   // src/module_bindings/post_duel_listing_reducer.ts
@@ -11142,6 +11185,11 @@ ${ty.variants.map(
     hairColor: t.u32()
   };
 
+  // src/module_bindings/set_hiscore_visibility_reducer.ts
+  var set_hiscore_visibility_reducer_default = {
+    shown: t.string()
+  };
+
   // src/module_bindings/set_party_course_reducer.ts
   var set_party_course_reducer_default = {
     courseJson: t.string(),
@@ -11156,6 +11204,12 @@ ${ty.variants.map(
   // src/module_bindings/set_party_ready_reducer.ts
   var set_party_ready_reducer_default = {
     ready: t.bool()
+  };
+
+  // src/module_bindings/set_share_settings_reducer.ts
+  var set_share_settings_reducer_default = {
+    latelyNamed: t.bool(),
+    friendsWatch: t.bool()
   };
 
   // src/module_bindings/set_shown_badge_reducer.ts
@@ -11602,6 +11656,10 @@ ${ty.variants.map(
   var ContentVersion = t.object("ContentVersion", {});
   var ContentVersionRow = t.object("ContentVersionRow", {
     hash: t.string()
+  });
+  var CoopRecord = t.object("CoopRecord", {
+    owner: t.identity(),
+    revives: t.u32()
   });
   var DarkCheckpoint = t.object("DarkCheckpoint", {
     owner: t.identity(),
@@ -12326,6 +12384,38 @@ ${ty.variants.map(
     kitItemId: t.string(),
     appliedAt: t.timestamp()
   });
+  var HiscoreBoardRow = t.object("HiscoreBoardRow", {
+    board: t.string(),
+    rank: t.u32(),
+    restrictedRank: t.u32(),
+    displayName: t.string(),
+    score: t.u32(),
+    detail: t.u32(),
+    level: t.u32(),
+    gear: t.string(),
+    restricted: t.bool(),
+    reachedAt: t.timestamp()
+  });
+  var HiscoreBoards = t.object("HiscoreBoards", {});
+  var HiscoreEntry = t.object("HiscoreEntry", {
+    id: t.u64(),
+    owner: t.identity(),
+    board: t.string(),
+    score: t.u32(),
+    detail: t.u32(),
+    level: t.u32(),
+    gear: t.string(),
+    displayName: t.string(),
+    reachedAt: t.timestamp()
+  });
+  var HiscoreMigration = t.object("HiscoreMigration", {
+    id: t.string(),
+    appliedAt: t.timestamp()
+  });
+  var HiscorePrivacy = t.object("HiscorePrivacy", {
+    owner: t.identity(),
+    shown: t.string()
+  });
   var InventoryPosition = t.object("InventoryPosition", {
     id: t.u64(),
     owner: t.identity(),
@@ -12338,6 +12428,21 @@ ${ty.variants.map(
     itemId: t.string(),
     quantity: t.u32()
   });
+  var LatelyLine = t.object("LatelyLine", {
+    id: t.u64(),
+    kind: t.string(),
+    subject: t.string(),
+    owner: t.identity(),
+    name: t.string(),
+    at: t.timestamp()
+  });
+  var LatelyRow = t.object("LatelyRow", {
+    lineId: t.string(),
+    kind: t.string(),
+    subject: t.string(),
+    name: t.string(),
+    atMicros: t.u64()
+  });
   var LearnedSkill = t.object("LearnedSkill", {
     id: t.u64(),
     owner: t.identity(),
@@ -12349,6 +12454,22 @@ ${ty.variants.map(
     id: t.u32(),
     key: t.string(),
     setAt: t.timestamp()
+  });
+  var MarketBuyOrder = t.object("MarketBuyOrder", {
+    id: t.u64(),
+    buyer: t.identity(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    pricePer: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var MarketBuyOrderBook = t.object("MarketBuyOrderBook", {});
+  var MarketBuyOrderBookRow = t.object("MarketBuyOrderBookRow", {
+    itemId: t.string(),
+    bestPrice: t.u32(),
+    wantedAtBest: t.u32(),
+    wanted: t.u32(),
+    orders: t.u32()
   });
   var MarketListing = t.object("MarketListing", {
     id: t.u64(),
@@ -12439,6 +12560,7 @@ ${ty.variants.map(
   var MyCheckouts = t.object("MyCheckouts", {});
   var MyCollectionKills = t.object("MyCollectionKills", {});
   var MyCollectionLog = t.object("MyCollectionLog", {});
+  var MyCoopRecord = t.object("MyCoopRecord", {});
   var MyDarkChestClaims = t.object("MyDarkChestClaims", {});
   var MyDarkDeathLoss = t.object("MyDarkDeathLoss", {});
   var MyDarkDuel = t.object("MyDarkDuel", {});
@@ -12475,9 +12597,32 @@ ${ty.variants.map(
   var MyGearInstances = t.object("MyGearInstances", {});
   var MyGearInsurance = t.object("MyGearInsurance", {});
   var MyGearOrnaments = t.object("MyGearOrnaments", {});
+  var MyHiscorePrivacy = t.object("MyHiscorePrivacy", {});
+  var MyHiscoreRow = t.object("MyHiscoreRow", {
+    board: t.string(),
+    mine: t.bool(),
+    rank: t.u32(),
+    displayName: t.string(),
+    score: t.u32(),
+    detail: t.u32(),
+    level: t.u32(),
+    gear: t.string(),
+    restricted: t.bool(),
+    reachedAt: t.timestamp()
+  });
+  var MyHiscores = t.object("MyHiscores", {});
   var MyInventory = t.object("MyInventory", {});
   var MyInventoryOrder = t.object("MyInventoryOrder", {});
+  var MyLately = t.object("MyLately", {});
   var MyLoadouts = t.object("MyLoadouts", {});
+  var MyMarketBuyOrder = t.object("MyMarketBuyOrder", {
+    orderId: t.string(),
+    itemId: t.string(),
+    quantity: t.u32(),
+    pricePer: t.u32(),
+    createdAt: t.timestamp()
+  });
+  var MyMarketBuyOrders = t.object("MyMarketBuyOrders", {});
   var MyMarketSaleNotice = t.object("MyMarketSaleNotice", {});
   var MyMarketTransactions = t.object("MyMarketTransactions", {});
   var MyOnboarding = t.object("MyOnboarding", {});
@@ -12520,6 +12665,7 @@ ${ty.variants.map(
   var MySatchelKeep = t.object("MySatchelKeep", {});
   var MySavedBuilds = t.object("MySavedBuilds", {});
   var MySentFarmPvpAttacks = t.object("MySentFarmPvpAttacks", {});
+  var MyShareSettings = t.object("MyShareSettings", {});
   var MySkills = t.object("MySkills", {});
   var MySkinUnlocks = t.object("MySkinUnlocks", {});
   var MySlimeBagKeep = t.object("MySlimeBagKeep", {});
@@ -12531,7 +12677,9 @@ ${ty.variants.map(
   var MyTermsAcceptance = t.object("MyTermsAcceptance", {});
   var MyUpgradeProgress = t.object("MyUpgradeProgress", {});
   var MyUpgradeUnlocks = t.object("MyUpgradeUnlocks", {});
+  var MyWatchableFriendRooms = t.object("MyWatchableFriendRooms", {});
   var MyWatchableFriendSeries = t.object("MyWatchableFriendSeries", {});
+  var MyWatchedFriendBoards = t.object("MyWatchedFriendBoards", {});
   var MyWatchedReplay = t.object("MyWatchedReplay", {});
   var MyWelcomeChest = t.object("MyWelcomeChest", {});
   var OpponentFarmBoardsCompactV4 = t.object("OpponentFarmBoardsCompactV4", {});
@@ -13341,6 +13489,15 @@ ${ty.variants.map(
     until: t.timestamp()
   });
   var ServerNotices = t.object("ServerNotices", {});
+  var ShareSettings = t.object("ShareSettings", {
+    owner: t.identity(),
+    latelyNamed: t.bool(),
+    friendsWatch: t.bool()
+  });
+  var ShareSettingsRow = t.object("ShareSettingsRow", {
+    latelyNamed: t.bool(),
+    friendsWatch: t.bool()
+  });
   var SkillsTreeState = t.object("SkillsTreeState", {
     owner: t.identity(),
     treeVersion: t.u32(),
@@ -13454,6 +13611,13 @@ ${ty.variants.map(
     rank: t.u32(),
     pointCost: t.u32()
   });
+  var WatchableRoomRow = t.object("WatchableRoomRow", {
+    friendId: t.u64(),
+    friendName: t.string(),
+    kind: t.string(),
+    roomKey: t.u32(),
+    friendSlot: t.u32()
+  });
   var WatchableSeriesRow = t.object("WatchableSeriesRow", {
     friendId: t.u64(),
     friendName: t.string(),
@@ -13469,6 +13633,18 @@ ${ty.variants.map(
     twoWins: t.u32(),
     oneDivision: t.i32(),
     twoDivision: t.i32()
+  });
+  var WatchedFriendBoardRow = t.object("WatchedFriendBoardRow", {
+    room: t.u32(),
+    slot: t.u32(),
+    board: t.byteArray(),
+    activeKind: t.i32(),
+    activeX: t.i32(),
+    activeY: t.i32(),
+    activeRotation: t.u32(),
+    score: t.u32(),
+    linesCleared: t.u32(),
+    toppedOut: t.bool()
   });
   var WelcomeChestClaim = t.object("WelcomeChestClaim", {
     owner: t.identity(),
@@ -13575,6 +13751,29 @@ ${ty.variants.map(
   var farm_player_counts_table_default = t.row({
     mode: t.string(),
     players: t.u32()
+  });
+
+  // src/module_bindings/hiscore_boards_table.ts
+  var hiscore_boards_table_default = t.row({
+    board: t.string(),
+    rank: t.u32(),
+    restrictedRank: t.u32().name("restricted_rank"),
+    displayName: t.string().name("display_name"),
+    score: t.u32(),
+    detail: t.u32(),
+    level: t.u32(),
+    gear: t.string(),
+    restricted: t.bool(),
+    reachedAt: t.timestamp().name("reached_at")
+  });
+
+  // src/module_bindings/market_buy_order_book_table.ts
+  var market_buy_order_book_table_default = t.row({
+    itemId: t.string().name("item_id"),
+    bestPrice: t.u32().name("best_price"),
+    wantedAtBest: t.u32().name("wanted_at_best"),
+    wanted: t.u32(),
+    orders: t.u32()
   });
 
   // src/module_bindings/market_listings_table.ts
@@ -13770,6 +13969,12 @@ ${ty.variants.map(
     firstAt: t.timestamp().name("first_at"),
     firstKillCount: t.u64().name("first_kill_count"),
     obtained: t.u64()
+  });
+
+  // src/module_bindings/my_coop_record_table.ts
+  var my_coop_record_table_default = t.row({
+    owner: t.identity().primaryKey(),
+    revives: t.u32()
   });
 
   // src/module_bindings/my_dark_chest_claims_table.ts
@@ -14272,6 +14477,26 @@ ${ty.variants.map(
     appliedAt: t.timestamp().name("applied_at")
   });
 
+  // src/module_bindings/my_hiscore_privacy_table.ts
+  var my_hiscore_privacy_table_default = t.row({
+    owner: t.identity().primaryKey(),
+    shown: t.string()
+  });
+
+  // src/module_bindings/my_hiscores_table.ts
+  var my_hiscores_table_default = t.row({
+    board: t.string(),
+    mine: t.bool(),
+    rank: t.u32(),
+    displayName: t.string().name("display_name"),
+    score: t.u32(),
+    detail: t.u32(),
+    level: t.u32(),
+    gear: t.string(),
+    restricted: t.bool(),
+    reachedAt: t.timestamp().name("reached_at")
+  });
+
   // src/module_bindings/my_inventory_table.ts
   var my_inventory_table_default = t.row({
     id: t.u64().primaryKey(),
@@ -14288,6 +14513,15 @@ ${ty.variants.map(
     position: t.u32()
   });
 
+  // src/module_bindings/my_lately_table.ts
+  var my_lately_table_default = t.row({
+    lineId: t.string().name("line_id"),
+    kind: t.string(),
+    subject: t.string(),
+    name: t.string(),
+    atMicros: t.u64().name("at_micros")
+  });
+
   // src/module_bindings/my_loadouts_table.ts
   var my_loadouts_table_default = t.row({
     id: t.u64().primaryKey(),
@@ -14298,6 +14532,15 @@ ${ty.variants.map(
     combatBuildId: t.u64().name("combat_build_id"),
     skillsBuildId: t.u64().name("skills_build_id"),
     updatedAt: t.timestamp().name("updated_at")
+  });
+
+  // src/module_bindings/my_market_buy_orders_table.ts
+  var my_market_buy_orders_table_default = t.row({
+    orderId: t.string().primaryKey().name("order_id"),
+    itemId: t.string().name("item_id"),
+    quantity: t.u32(),
+    pricePer: t.u32().name("price_per"),
+    createdAt: t.timestamp().name("created_at")
   });
 
   // src/module_bindings/my_market_sale_notice_table.ts
@@ -14889,6 +15132,12 @@ ${ty.variants.map(
     ordinal: t.u32()
   });
 
+  // src/module_bindings/my_share_settings_table.ts
+  var my_share_settings_table_default = t.row({
+    latelyNamed: t.bool().name("lately_named"),
+    friendsWatch: t.bool().name("friends_watch")
+  });
+
   // src/module_bindings/my_skills_table.ts
   var my_skills_table_default = t.row({
     id: t.u64().primaryKey(),
@@ -14998,6 +15247,15 @@ ${ty.variants.map(
     pointCost: t.u32().name("point_cost")
   });
 
+  // src/module_bindings/my_watchable_friend_rooms_table.ts
+  var my_watchable_friend_rooms_table_default = t.row({
+    friendId: t.u64().name("friend_id"),
+    friendName: t.string().name("friend_name"),
+    kind: t.string(),
+    roomKey: t.u32().name("room_key"),
+    friendSlot: t.u32().name("friend_slot")
+  });
+
   // src/module_bindings/my_watchable_friend_series_table.ts
   var my_watchable_friend_series_table_default = t.row({
     friendId: t.u64().name("friend_id"),
@@ -15014,6 +15272,20 @@ ${ty.variants.map(
     twoWins: t.u32().name("two_wins"),
     oneDivision: t.i32().name("one_division"),
     twoDivision: t.i32().name("two_division")
+  });
+
+  // src/module_bindings/my_watched_friend_boards_table.ts
+  var my_watched_friend_boards_table_default = t.row({
+    room: t.u32(),
+    slot: t.u32(),
+    board: t.byteArray(),
+    activeKind: t.i32().name("active_kind"),
+    activeX: t.i32().name("active_x"),
+    activeY: t.i32().name("active_y"),
+    activeRotation: t.u32().name("active_rotation"),
+    score: t.u32(),
+    linesCleared: t.u32().name("lines_cleared"),
+    toppedOut: t.bool().name("topped_out")
   });
 
   // src/module_bindings/my_watched_replay_table.ts
@@ -15303,6 +15575,16 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, farm_player_counts_table_default),
+    hiscoreBoards: table({
+      name: "hiscore_boards",
+      indexes: [],
+      constraints: []
+    }, hiscore_boards_table_default),
+    marketBuyOrderBook: table({
+      name: "market_buy_order_book",
+      indexes: [],
+      constraints: []
+    }, market_buy_order_book_table_default),
     marketListings: table({
       name: "market_listings",
       indexes: [],
@@ -15388,6 +15670,11 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_collection_log_table_default),
+    myCoopRecord: table({
+      name: "my_coop_record",
+      indexes: [],
+      constraints: []
+    }, my_coop_record_table_default),
     myDarkChestClaims: table({
       name: "my_dark_chest_claims",
       indexes: [],
@@ -15568,6 +15855,16 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_gear_ornaments_table_default),
+    myHiscorePrivacy: table({
+      name: "my_hiscore_privacy",
+      indexes: [],
+      constraints: []
+    }, my_hiscore_privacy_table_default),
+    myHiscores: table({
+      name: "my_hiscores",
+      indexes: [],
+      constraints: []
+    }, my_hiscores_table_default),
     myInventory: table({
       name: "my_inventory",
       indexes: [],
@@ -15578,11 +15875,21 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_inventory_order_table_default),
+    myLately: table({
+      name: "my_lately",
+      indexes: [],
+      constraints: []
+    }, my_lately_table_default),
     myLoadouts: table({
       name: "my_loadouts",
       indexes: [],
       constraints: []
     }, my_loadouts_table_default),
+    myMarketBuyOrders: table({
+      name: "my_market_buy_orders",
+      indexes: [],
+      constraints: []
+    }, my_market_buy_orders_table_default),
     myMarketSaleNotice: table({
       name: "my_market_sale_notice",
       indexes: [],
@@ -15793,6 +16100,11 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_sent_farm_pvp_attacks_table_default),
+    myShareSettings: table({
+      name: "my_share_settings",
+      indexes: [],
+      constraints: []
+    }, my_share_settings_table_default),
     mySkills: table({
       name: "my_skills",
       indexes: [],
@@ -15848,11 +16160,21 @@ ${ty.variants.map(
       indexes: [],
       constraints: []
     }, my_upgrade_unlocks_table_default),
+    myWatchableFriendRooms: table({
+      name: "my_watchable_friend_rooms",
+      indexes: [],
+      constraints: []
+    }, my_watchable_friend_rooms_table_default),
     myWatchableFriendSeries: table({
       name: "my_watchable_friend_series",
       indexes: [],
       constraints: []
     }, my_watchable_friend_series_table_default),
+    myWatchedFriendBoards: table({
+      name: "my_watched_friend_boards",
+      indexes: [],
+      constraints: []
+    }, my_watched_friend_boards_table_default),
     myWatchedReplay: table({
       name: "my_watched_replay",
       indexes: [],
@@ -15955,6 +16277,7 @@ ${ty.variants.map(
     reducerSchema("buy_shop_item", buy_shop_item_reducer_default),
     reducerSchema("cancel_checkout", cancel_checkout_reducer_default),
     reducerSchema("cancel_friend_request", cancel_friend_request_reducer_default),
+    reducerSchema("cancel_market_buy_order", cancel_market_buy_order_reducer_default),
     reducerSchema("cancel_market_listing", cancel_market_listing_reducer_default),
     reducerSchema("challenge_duel_listing", challenge_duel_listing_reducer_default),
     reducerSchema("choose_party_road", choose_party_road_reducer_default),
@@ -16041,6 +16364,7 @@ ${ty.variants.map(
     reducerSchema("operator_store_set_mode", operator_store_set_mode_reducer_default),
     reducerSchema("operator_store_tester", operator_store_tester_reducer_default),
     reducerSchema("operator_suspend_account", operator_suspend_account_reducer_default),
+    reducerSchema("place_market_buy_order", place_market_buy_order_reducer_default),
     reducerSchema("post_duel_listing", post_duel_listing_reducer_default),
     reducerSchema("prove_party_trace", prove_party_trace_reducer_default),
     reducerSchema("publish_duel_board", publish_duel_board_reducer_default),
@@ -16105,9 +16429,11 @@ ${ty.variants.map(
     reducerSchema("set_endless_course", set_endless_course_reducer_default),
     reducerSchema("set_friend_settings", set_friend_settings_reducer_default),
     reducerSchema("set_hair", set_hair_reducer_default),
+    reducerSchema("set_hiscore_visibility", set_hiscore_visibility_reducer_default),
     reducerSchema("set_party_course", set_party_course_reducer_default),
     reducerSchema("set_party_omens", set_party_omens_reducer_default),
     reducerSchema("set_party_ready", set_party_ready_reducer_default),
+    reducerSchema("set_share_settings", set_share_settings_reducer_default),
     reducerSchema("set_shown_badge", set_shown_badge_reducer_default),
     reducerSchema("set_skin_tone", set_skin_tone_reducer_default),
     reducerSchema("star_replay", star_replay_reducer_default),
@@ -16152,6 +16478,8 @@ ${ty.variants.map(
     "dark_player_count": "darkPlayerCount",
     "duel_listings": "duelListings",
     "farm_player_counts": "farmPlayerCounts",
+    "hiscore_boards": "hiscoreBoards",
+    "market_buy_order_book": "marketBuyOrderBook",
     "market_listings": "marketListings",
     "market_price_guide": "marketPriceGuide",
     "my_account_email": "myAccountEmail",
@@ -16169,6 +16497,7 @@ ${ty.variants.map(
     "my_checkouts": "myCheckouts",
     "my_collection_kills": "myCollectionKills",
     "my_collection_log": "myCollectionLog",
+    "my_coop_record": "myCoopRecord",
     "my_dark_chest_claims": "myDarkChestClaims",
     "my_dark_death_loss": "myDarkDeathLoss",
     "my_dark_duel": "myDarkDuel",
@@ -16205,9 +16534,13 @@ ${ty.variants.map(
     "my_gear_instances": "myGearInstances",
     "my_gear_insurance": "myGearInsurance",
     "my_gear_ornaments": "myGearOrnaments",
+    "my_hiscore_privacy": "myHiscorePrivacy",
+    "my_hiscores": "myHiscores",
     "my_inventory": "myInventory",
     "my_inventory_order": "myInventoryOrder",
+    "my_lately": "myLately",
     "my_loadouts": "myLoadouts",
+    "my_market_buy_orders": "myMarketBuyOrders",
     "my_market_sale_notice": "myMarketSaleNotice",
     "my_market_transactions": "myMarketTransactions",
     "my_onboarding": "myOnboarding",
@@ -16250,6 +16583,7 @@ ${ty.variants.map(
     "my_satchel_keep": "mySatchelKeep",
     "my_saved_builds": "mySavedBuilds",
     "my_sent_farm_pvp_attacks": "mySentFarmPvpAttacks",
+    "my_share_settings": "myShareSettings",
     "my_skills": "mySkills",
     "my_skin_unlocks": "mySkinUnlocks",
     "my_slime_bag_keep": "mySlimeBagKeep",
@@ -16261,7 +16595,9 @@ ${ty.variants.map(
     "my_terms_acceptance": "myTermsAcceptance",
     "my_upgrade_progress": "myUpgradeProgress",
     "my_upgrade_unlocks": "myUpgradeUnlocks",
+    "my_watchable_friend_rooms": "myWatchableFriendRooms",
     "my_watchable_friend_series": "myWatchableFriendSeries",
+    "my_watched_friend_boards": "myWatchedFriendBoards",
     "my_watched_replay": "myWatchedReplay",
     "my_welcome_chest": "myWelcomeChest",
     "opponent_farm_boards_compact_v4": "opponentFarmBoardsCompactV4",
@@ -17140,6 +17476,115 @@ ${ty.variants.map(
     return out;
   }
 
+  // src/friend_watch.ts
+  var friendWatchedBoards = new FarmRivalBoards();
+  var watchHandle2 = null;
+  var watchKind = "";
+  var keyframeHandle = null;
+  var keyframeAskedAt = 0;
+  var handlersOn2 = /* @__PURE__ */ new WeakSet();
+  function wireHandlers2(activeConnection) {
+    if (handlersOn2.has(activeConnection)) return;
+    handlersOn2.add(activeConnection);
+    const db = activeConnection.db;
+    const onLock = (kind) => (_ctx, row) => {
+      if (watchKind !== kind) return;
+      const outcome = friendWatchedBoards.applyLock(row);
+      if (outcome === "applied") scheduleDomain(activeConnection, "friendWatchBoards");
+      else if (outcome === "mismatch") requestWatchKeyframe(activeConnection);
+    };
+    const onBoard = (kind) => (_ctx, row) => {
+      if (watchKind === kind && friendWatchedBoards.applyBoard(row)) scheduleDomain(activeConnection, "friendWatchBoards");
+    };
+    db.farmLockEvent.onInsert(onLock("farm"));
+    db.farmBoardEvent.onInsert(onBoard("farm"));
+    db.partyLockEvent.onInsert(onLock("party"));
+    db.partyBoardEvent.onInsert(onBoard("party"));
+  }
+  function stopWatching2() {
+    for (const handle of [watchHandle2, keyframeHandle]) {
+      if (handle && typeof handle.unsubscribe === "function") {
+        try {
+          handle.unsubscribe();
+        } catch {
+        }
+      }
+    }
+    watchHandle2 = null;
+    keyframeHandle = null;
+  }
+  function watchLanes(kind, room) {
+    const prefix = kind === "party" ? "party" : "farm";
+    return [`SELECT * FROM ${prefix}_lock_event WHERE room = ${room}`, `SELECT * FROM ${prefix}_board_event WHERE room = ${room}`];
+  }
+  function watchFriendRoom(room, kind) {
+    const activeConnection = live.connection;
+    const key = Number.isFinite(room) ? Math.trunc(room) : -1;
+    const lanes = kind === "party" ? "party" : "farm";
+    if (key === friendWatchedBoards.room && (key < 0 || lanes === watchKind && watchHandle2)) return;
+    stopWatching2();
+    friendWatchedBoards.follow(key);
+    watchKind = key < 0 ? "" : lanes;
+    if (!activeConnection) return;
+    scheduleDomain(activeConnection, "friendWatchBoards");
+    if (key < 0 || live.connection !== activeConnection || !groupSubscribed("friends")) return;
+    wireHandlers2(activeConnection);
+    const handle = activeConnection.subscriptionBuilder().onApplied(() => {
+      if (watchHandle2 !== handle) return;
+      requestWatchKeyframe(activeConnection, true);
+    }).onError((_ctx, error) => {
+      if (live.connection === activeConnection) emit({ type: "error", command: "watchFriendRoom", message: String(error) });
+    }).subscribe(watchLanes(lanes, key));
+    watchHandle2 = handle;
+  }
+  function keyframeRowsFor(viewRows, room) {
+    return viewRows.filter((row) => Number(row.room) === room);
+  }
+  function requestWatchKeyframe(activeConnection, force = false) {
+    if (live.connection !== activeConnection || !watchHandle2 || keyframeHandle) return;
+    const now = Date.now();
+    if (!force && now - keyframeAskedAt < 2e3) return;
+    keyframeAskedAt = now;
+    const room = friendWatchedBoards.room;
+    const handle = activeConnection.subscriptionBuilder().onApplied(() => {
+      if (keyframeHandle !== handle) return;
+      if (room === friendWatchedBoards.room) {
+        const viewRows = Array.from(activeConnection.db.myWatchedFriendBoards.iter());
+        friendWatchedBoards.applyKeyframe(keyframeRowsFor(viewRows, room));
+        scheduleDomain(activeConnection, "friendWatchBoards");
+      }
+      keyframeHandle = null;
+      try {
+        handle.unsubscribe();
+      } catch {
+      }
+    }).onError(() => {
+      if (keyframeHandle === handle) keyframeHandle = null;
+    }).subscribe([tables.myWatchedFriendBoards]);
+    keyframeHandle = handle;
+  }
+  function releaseFriendWatchHandles() {
+    watchHandle2 = null;
+    keyframeHandle = null;
+    watchKind = "";
+    friendWatchedBoards.clear();
+  }
+  function friendWatchedBoardRows() {
+    const out = [];
+    for (const [slot, board] of friendWatchedBoards.boards) {
+      if (board.stale) continue;
+      out.push({
+        room: friendWatchedBoards.room,
+        slot,
+        cells: board.cells,
+        score: board.score,
+        linesCleared: board.linesCleared,
+        toppedOut: board.toppedOut
+      });
+    }
+    return out;
+  }
+
   // src/party_partner_boards.ts
   function identityHex(value) {
     const hex = value?.toHexString;
@@ -17340,6 +17785,7 @@ ${ty.variants.map(
     releaseFarmRoomHandles();
     releasePartyRoomHandles();
     releaseWatchHandles();
+    releaseFriendWatchHandles();
   }
   function adoptScopedSubscriptions(activeConnection) {
     if (scopedSubscriptionConnection === activeConnection) return;
@@ -17398,6 +17844,8 @@ ${ty.variants.map(
     // handling of it are unchanged. The roster it reads is observed for farmBoard.
     // WATCH: the boards of the friend's room being watched (ranked_watch.ts).
     rankedWatchBoards: () => ({ rankedWatchBoards: watchedBoardRows() }),
+    // WATCH: the boards of a friend's Farm room or party (friend_watch.ts).
+    friendWatchBoards: () => ({ friendWatchBoards: friendWatchedBoardRows() }),
     farmPiece: (activeConnection) => {
       const { pieces } = farmRivals.opponentRows(rows(activeConnection.db.opponentFarmRosterV2));
       return { farmOpponentPieces: pieces, opponentFarmPiece: pieces[0] ?? null };
@@ -17512,7 +17960,7 @@ ${ty.variants.map(
     // my_market_sale_notice rides along: how far the player has been told, so a sale
     // made while the game was closed is announced once on the next load.
     marketHistory: { errorCommand: "subscribeMarketHistory" },
-    // Dark Greenshore's duels. Subscribed for the whole connection rather than
+    // Dark's duels. Subscribed for the whole connection rather than
     // while a Dark run is open, because being matched is something that HAPPENS to
     // a player: the row arrives from somebody else's reducer call, and a client
     // that only listened while it thought a fight was on would never hear the one
@@ -17566,7 +18014,12 @@ ${ty.variants.map(
     // Friends, for the whole connection: a request, an invite or a friend coming
     // online all happen to a player because of somebody else. Every view is
     // sender-scoped and small.
-    friends: { errorCommand: "subscribeFriends" }
+    friends: { errorCommand: "subscribeFriends" },
+    // The HISCORES boards (docs/HISCORES.md), only while that screen is open: the
+    // boards are shared, but the player's own lines are ranked per viewer, so
+    // nobody pays for them who is not looking. Opening the screen subscribes them
+    // fresh; leaving drops them.
+    hiscores: { wanted: () => live.hiscoresWanted, errorCommand: "subscribeHiscores" }
   };
   var SCOPED_GROUPS = Object.keys(GROUPS);
   function ensureSubscription(activeConnection, group) {
@@ -17841,12 +18294,14 @@ ${ty.variants.map(
       const context2 = JSON.parse(contextJson);
       const nextScreen = typeof context2.screen === "string" ? context2.screen : CLIENT_SCREENS.title;
       const countersWanted = context2.counters === true;
-      if (nextScreen === live.clientScreen && countersWanted === live.countersWanted) {
+      const hiscoresWanted = context2.hiscores === true;
+      if (nextScreen === live.clientScreen && countersWanted === live.countersWanted && hiscoresWanted === live.hiscoresWanted) {
         noteUserActivity();
         return;
       }
       live.clientScreen = nextScreen;
       live.countersWanted = countersWanted;
+      live.hiscoresWanted = hiscoresWanted;
       noteUserActivity();
       if (!live.connection || !live.coreSubscriptionReady) return;
       followClientScreen(live.connection);
@@ -20774,6 +21229,7 @@ ${ty.variants.map(
     takeProblemReports,
     diagnosticsLogTail,
     noteSlowCall,
-    watchRankedRoom
+    watchRankedRoom,
+    watchFriendRoom
   };
 })();

@@ -2,7 +2,7 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8">
-		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-K1fbeScte1mEWv44+1tRVo/b/mdV2EHpZLMU/45aBf4=' 'sha256-/iCpl8ITmahiHMPWnImQi334xjsAcmG44G/kOohOskw=' 'sha256-M2Jo+1Vlgy5K9gpIxmzYf2VagZw+Pbz2ELGdIdR4qrM=' 'sha256-+0kS2ZlGd51AWLVa6DmHLxMwVACugEBb1SOTHsit0Jo='; style-src 'self' 'sha256-XXIxhGnoHNDsuA8o1ny1OVg6j5CsCqkCosrLmw21iXw='; img-src 'self' data: blob:; connect-src 'self' https://maincloud.spacetimedb.com wss://maincloud.spacetimedb.com https://auth.spacetimedb.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+		<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' 'wasm-unsafe-eval' 'sha256-K1fbeScte1mEWv44+1tRVo/b/mdV2EHpZLMU/45aBf4=' 'sha256-/iCpl8ITmahiHMPWnImQi334xjsAcmG44G/kOohOskw=' 'sha256-M2Jo+1Vlgy5K9gpIxmzYf2VagZw+Pbz2ELGdIdR4qrM=' 'sha256-YrwbMwqG+TjWAcvi62Nfq1itRYQeB1ROL7tj9q+gaN4='; style-src 'self' 'sha256-AfcvYm1PqblAkAX90Xn4QXGlynWcgye74+IO7iH2M/Q='; img-src 'self' data: blob:; connect-src 'self' https://maincloud.spacetimedb.com wss://maincloud.spacetimedb.com https://auth.spacetimedb.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
 		<title>LDBG</title>
 		<!-- First, so its manifest downloads beside the engine: links the boot's
@@ -181,6 +181,71 @@ Content-Security-Policy allows no inline style (tools/web_glue/csp.mjs). */
 	font-weight: 700;
 	letter-spacing: 0.24em;
 	color: var(--muted);
+}
+
+/* A device with no fine pointer (a phone, a tablet) is told before the engine
+   downloads that the game needs a keyboard or a controller (GA-17 of
+   docs/GAME_AUDIT_2026_11.md), and may load it anyway. */
+#device-note {
+	position: absolute;
+	left: 50%;
+	bottom: 6%;
+	transform: translateX(-50%);
+	width: min(calc(100vw - 32px), 420px);
+	box-sizing: border-box;
+	padding: 18px 18px 16px;
+	border-radius: 12px;
+	border: 1px solid rgba(230, 200, 136, 0.45);
+	background: rgba(24, 34, 38, 0.94);
+	text-align: center;
+	font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+	z-index: 4;
+}
+
+#device-note[hidden] {
+	display: none;
+}
+
+#device-note-title {
+	margin: 0 0 6px;
+	font-size: 17px;
+	font-weight: 700;
+	color: var(--gold);
+}
+
+#device-note-body {
+	margin: 0 0 14px;
+	font-size: 15px;
+	line-height: 1.35;
+	color: var(--ink);
+}
+
+#device-note-actions {
+	display: flex;
+	gap: 10px;
+	justify-content: center;
+	align-items: center;
+	flex-wrap: wrap;
+}
+
+#device-note-load {
+	font: inherit;
+	font-size: 15px;
+	font-weight: 700;
+	letter-spacing: 0.06em;
+	min-height: 44px;
+	padding: 0 18px;
+	border-radius: 8px;
+	border: 1px solid var(--gold-deep);
+	background: #5a4c33;
+	color: var(--ink);
+	cursor: pointer;
+}
+
+#device-note-wiki {
+	font-size: 15px;
+	color: var(--gold);
+	padding: 10px 6px;
 }
 
 #status-notice {
@@ -422,7 +487,7 @@ window.addEventListener('keydown', function (event) {
 		</script>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
-<script src="auth_config.js?v=c99e9044942b"></script><script src="spacetime_bridge.js?v=a1528e6f1f2a"></script>
+<script src="auth_config.js?v=c99e9044942b"></script><script src="spacetime_bridge.js?v=6912530b18c6"></script>
 	</head>
 	<body>
 		<canvas id="canvas">
@@ -448,11 +513,19 @@ window.addEventListener('keydown', function (event) {
 				</div>
 			</div>
 			<div id="status-notice"></div>
+			<div id="device-note" role="dialog" aria-labelledby="device-note-title" hidden>
+				<p id="device-note-title">LDBG needs a keyboard or controller</p>
+				<p id="device-note-body">Open it on a computer. There's no touch play yet, and the game is a large download.</p>
+				<div id="device-note-actions">
+					<button id="device-note-load" type="button">Load anyway</button>
+					<a id="device-note-wiki" href="https://ldbg.net/wiki/">Read the wiki</a>
+				</div>
+			</div>
 		</div>
 
 		<script src="index.js?v=6bb097973f5b"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index-362f93e0532d","mainPack":"index-4335df548250.pck","experimentalVK":false,"fileSizes":{"index-be74e5735f3b.pck":42530856,"index-362f93e0532d.wasm":26346244,"index-4335df548250.pck":40904076,"patch-8a388a2d5e79.pck":3978520},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"ldbgPatch":"patch-8a388a2d5e79.pck","ldbgFull":"index-be74e5735f3b.pck","ldbgBase":"adc8995394978f561e6c444aba5673217a5c7ebf/7f1df1e8c141"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index-362f93e0532d","mainPack":"index-69b40f8d5036.pck","experimentalVK":false,"fileSizes":{"index-69b40f8d5036.pck":42741520,"index-362f93e0532d.wasm":26346244},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 // The base and the patch (docs/BROWSER_CLIENT.md, "The base and the patch"): a
@@ -685,6 +758,34 @@ function patchMadeFor(buffer) {
 		initializing = false;
 	}
 
+	// A phone or a tablet: a coarse pointer and no fine one (GA-17). A browser that
+	// reports neither (a headless one) is not asked, so nothing that boots the
+	// build unattended is held here.
+	function needsKeyboardNote() {
+		if (!window.matchMedia) {
+			return false;
+		}
+		return window.matchMedia('(any-pointer: coarse)').matches
+			&& !window.matchMedia('(any-pointer: fine)').matches;
+	}
+
+	// The note, before anything large downloads: Load anyway starts the boot,
+	// the wiki link reads about the game instead.
+	function showKeyboardNote(boot) {
+		const note = document.getElementById('device-note');
+		const load = document.getElementById('device-note-load');
+		// The overlay stays hidden until a status mode shows it: shown here, with
+		// the logo and its burst, and the note in the bar's place.
+		statusOverlay.style.visibility = 'visible';
+		loader.style.display = 'none';
+		note.hidden = false;
+		load.addEventListener('click', function () {
+			note.hidden = true;
+			loader.style.display = '';
+			boot();
+		}, { once: true });
+	}
+
 	const missing = Engine.getMissingFeatures({
 		threads: GODOT_THREADS_ENABLED,
 	});
@@ -721,111 +822,120 @@ function patchMadeFor(buffer) {
 			displayFailureNotice(missingMsg + missing.join('\n'));
 		}
 	} else {
-		setStatusMode('progress');
-		// The patch, when the deploy names one: fetched beside the base, checked
-		// here, and in the engine's file system before main() runs, where
-		// PatchMount, the first autoload, checks it again and mounts it. One that
-		// will not download or names another base is never handed over: the whole
-		// build is loaded over the base's file instead (copyToFS writes the
-		// preloaded files in order, so the later one wins). startGame starts the
-		// engine through engine.start, so holding that holds only the start.
-		let patchBytes = { loaded: 0, total: 0 };
-		if (patchName) {
-			patchBytes.total = (GODOT_CONFIG['fileSizes'] || {})[patchName] || 0;
-			const fetchPatch = function (attempt) {
-				patchBytes.loaded = 0;
-				return fetch(patchName).then(function (response) {
-					if (!response.ok) {
-						throw new Error('the patch did not download (' + response.status + ')');
-					}
-					const reader = response.body.getReader();
-					const parts = [];
-					const pump = function () {
-						return reader.read().then(function (chunk) {
-							if (chunk.done) {
-								return new Blob(parts).arrayBuffer();
-							}
-							parts.push(chunk.value);
-							patchBytes.loaded += chunk.value.length;
-							return pump();
+		// Everything below downloads the engine and the game: on a device with no
+		// fine pointer, only once the player has chosen to (GA-17).
+		const boot = function () {
+			setStatusMode('progress');
+			// The patch, when the deploy names one: fetched beside the base, checked
+			// here, and in the engine's file system before main() runs, where
+			// PatchMount, the first autoload, checks it again and mounts it. One that
+			// will not download or names another base is never handed over: the whole
+			// build is loaded over the base's file instead (copyToFS writes the
+			// preloaded files in order, so the later one wins). startGame starts the
+			// engine through engine.start, so holding that holds only the start.
+			let patchBytes = { loaded: 0, total: 0 };
+			if (patchName) {
+				patchBytes.total = (GODOT_CONFIG['fileSizes'] || {})[patchName] || 0;
+				const fetchPatch = function (attempt) {
+					patchBytes.loaded = 0;
+					return fetch(patchName).then(function (response) {
+						if (!response.ok) {
+							throw new Error('the patch did not download (' + response.status + ')');
+						}
+						const reader = response.body.getReader();
+						const parts = [];
+						const pump = function () {
+							return reader.read().then(function (chunk) {
+								if (chunk.done) {
+									return new Blob(parts).arrayBuffer();
+								}
+								parts.push(chunk.value);
+								patchBytes.loaded += chunk.value.length;
+								return pump();
+							});
+						};
+						return pump();
+					}).catch(function (err) {
+						if (attempt >= 4) {
+							throw err;
+						}
+						return new Promise(function (resolve) {
+							setTimeout(resolve, 1000);
+						}).then(function () {
+							return fetchPatch(attempt + 1);
 						});
-					};
-					return pump();
-				}).catch(function (err) {
-					if (attempt >= 4) {
-						throw err;
-					}
-					return new Promise(function (resolve) {
-						setTimeout(resolve, 1000);
-					}).then(function () {
-						return fetchPatch(attempt + 1);
 					});
-				});
-			};
-			const patchChecked = fetchPatch(1).then(function (buffer) {
-				const madeFor = patchMadeFor(buffer);
-				if (madeFor !== patchBase) {
-					throw new Error(madeFor === null ? 'the patch is not a whole pack' : 'the patch is for base "' + madeFor + '"');
-				}
-				return buffer;
-			}).catch(function (err) {
-				console.warn('[patch] ' + err.message + '; loading the full build');
-				return null;
-			});
-			const start = engine.start;
-			engine.start = function (override) {
-				return patchChecked.then(function (buffer) {
-					if (buffer) {
-						return engine.preloadFile(buffer, 'ldbg_patch.pck');
+				};
+				const patchChecked = fetchPatch(1).then(function (buffer) {
+					const madeFor = patchMadeFor(buffer);
+					if (madeFor !== patchBase) {
+						throw new Error(madeFor === null ? 'the patch is not a whole pack' : 'the patch is for base "' + madeFor + '"');
 					}
-					patchName = '';
-					statusProgress.classList.add('indeterminate');
-					return engine.preloadFile(fullPack, GODOT_CONFIG['mainPack']);
-				}).then(function () {
-					return start.call(engine, override);
+					return buffer;
+				}).catch(function (err) {
+					console.warn('[patch] ' + err.message + '; loading the full build');
+					return null;
 				});
-			};
+				const start = engine.start;
+				engine.start = function (override) {
+					return patchChecked.then(function (buffer) {
+						if (buffer) {
+							return engine.preloadFile(buffer, 'ldbg_patch.pck');
+						}
+						patchName = '';
+						statusProgress.classList.add('indeterminate');
+						return engine.preloadFile(fullPack, GODOT_CONFIG['mainPack']);
+					}).then(function () {
+						return start.call(engine, override);
+					});
+				};
+			}
+			engine.startGame({
+				'mainPack': fullPackAsked ? fullPack : GODOT_CONFIG['mainPack'],
+				'onProgress': function (current, total) {
+					if (patchName && current > 0 && total > 0) {
+						current += patchBytes.loaded;
+						total += patchBytes.total;
+					}
+					if (current > 0 && total > 0) {
+						showProgress('download', current / total);
+						if (current >= total && bootPhase === 'download') {
+							// Everything is in: what follows is the engine starting on
+							// this thread, the stretch a watchdog must not lose.
+							bootPhase = 'engine';
+						}
+					} else {
+						statusProgress.classList.add('indeterminate');
+						statusFill.style.transform = '';
+					}
+				},
+			}).then(() => {
+				engineStarted = true;
+				engineStartedAt = Date.now();
+				lastWordAt = engineStartedAt;
+				if (bootPhase === 'download') {
+					bootPhase = 'engine';
+				}
+				if (!gameReady) {
+					showProgress(bootPhase, bootFraction);
+				}
+				const fallback = setInterval(function () {
+					const now = Date.now();
+					if (!initializing) {
+						clearInterval(fallback);
+					} else if (now - lastWordAt >= READY_TIMEOUT_MS || now - engineStartedAt >= READY_LIMIT_MS) {
+						clearInterval(fallback);
+						reveal();
+					}
+				}, 1000);
+				maybeReveal();
+			}, displayFailureNotice);
+		};
+		if (needsKeyboardNote()) {
+			showKeyboardNote(boot);
+		} else {
+			boot();
 		}
-		engine.startGame({
-			'mainPack': fullPackAsked ? fullPack : GODOT_CONFIG['mainPack'],
-			'onProgress': function (current, total) {
-				if (patchName && current > 0 && total > 0) {
-					current += patchBytes.loaded;
-					total += patchBytes.total;
-				}
-				if (current > 0 && total > 0) {
-					showProgress('download', current / total);
-					if (current >= total && bootPhase === 'download') {
-						// Everything is in: what follows is the engine starting on
-						// this thread, the stretch a watchdog must not lose.
-						bootPhase = 'engine';
-					}
-				} else {
-					statusProgress.classList.add('indeterminate');
-					statusFill.style.transform = '';
-				}
-			},
-		}).then(() => {
-			engineStarted = true;
-			engineStartedAt = Date.now();
-			lastWordAt = engineStartedAt;
-			if (bootPhase === 'download') {
-				bootPhase = 'engine';
-			}
-			if (!gameReady) {
-				showProgress(bootPhase, bootFraction);
-			}
-			const fallback = setInterval(function () {
-				const now = Date.now();
-				if (!initializing) {
-					clearInterval(fallback);
-				} else if (now - lastWordAt >= READY_TIMEOUT_MS || now - engineStartedAt >= READY_LIMIT_MS) {
-					clearInterval(fallback);
-					reveal();
-				}
-			}, 1000);
-			maybeReveal();
-		}, displayFailureNotice);
 	}
 }());
 		</script>
