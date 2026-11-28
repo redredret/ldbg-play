@@ -10698,6 +10698,12 @@ ${ty.variants.map(
     reason: t.string()
   };
 
+  // src/module_bindings/operator_resettle_stale_page_run_reducer.ts
+  var operator_resettle_stale_page_run_reducer_default = {
+    reportId: t.u64(),
+    reason: t.string()
+  };
+
   // src/module_bindings/operator_revoke_badge_reducer.ts
   var operator_revoke_badge_reducer_default = {
     displayName: t.string(),
@@ -16359,6 +16365,7 @@ ${ty.variants.map(
     reducerSchema("operator_regrade_enhancements", operator_regrade_enhancements_reducer_default),
     reducerSchema("operator_rename_player", operator_rename_player_reducer_default),
     reducerSchema("operator_resettle_refused_run", operator_resettle_refused_run_reducer_default),
+    reducerSchema("operator_resettle_stale_page_run", operator_resettle_stale_page_run_reducer_default),
     reducerSchema("operator_revoke_badge", operator_revoke_badge_reducer_default),
     reducerSchema("operator_set_loot_key", operator_set_loot_key_reducer_default),
     reducerSchema("operator_store_set_mode", operator_store_set_mode_reducer_default),
